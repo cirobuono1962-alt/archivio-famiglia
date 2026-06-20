@@ -1,0 +1,27 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getRuolo() {
+      return firestore.get(/databases/(default)/documents/utenti/$(request.auth.uid)).data.ruolo;
+    }
+
+    function getCategorieVisibili() {
+      return firestore.get(/databases/(default)/documents/utenti/$(request.auth.uid)).data.categorieVisibili;
+    }
+
+    // documenti/{categoria}/{docId}/originale.ext
+    match /documenti/{categoria}/{docId}/{fileName} {
+      allow read: if isSignedIn() && (
+        getRuolo() in ["admin", "familiare"] ||
+        (getRuolo() == "esterno" && categoria in getCategorieVisibili())
+      );
+      allow write: if isSignedIn() && getRuolo() in ["admin", "familiare"]
+                   && request.resource.size < 25 * 1024 * 1024; // max 25MB per file
+    }
+  }
+}
