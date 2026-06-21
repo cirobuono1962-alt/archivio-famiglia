@@ -208,7 +208,10 @@ async function gestisciCaricaDocumento(e) {
     btnSubmit.disabled = false;
   }
 }
-
+Bene, 210 righe per il Blocco 1 è coerente con quanto atteso. Ora aggiungiamo il Blocco 2.
+Blocco 2 — Clicca alla fine del testo appena incollato
+Assicurati che il cursore sia posizionato subito dopo l'ultima riga del Blocco 1 (l'ultima } di gestisciCaricaDocumento), poi incolla questo, di seguito (non cancellare nulla, solo aggiungi):
+javascript
 async function apriDettaglioDocumento(docId, documentiCache) {
   const doc = documentiCache.find((d) => d.id === docId);
   if (!doc) return;
@@ -248,10 +251,6 @@ async function apriDettaglioDocumento(docId, documentiCache) {
     btnScarica.textContent = "Apertura...";
     try {
       const url = await ottieniUrlDownload(doc.storageRef);
-      // Navigazione diretta nella stessa scheda invece di window.open():
-      // Safari (specialmente su iOS, specialmente in PWA installate) blocca
-      // i popup in modo molto più aggressivo di Chrome, anche se aperti in
-      // modo sincrono. La navigazione diretta funziona sempre, su tutti i browser.
       window.location.href = url;
     } catch (err) {
       alert("Impossibile aprire il file: " + err.message);
