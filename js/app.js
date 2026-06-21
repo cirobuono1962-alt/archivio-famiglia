@@ -28,8 +28,6 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("select-categoria-filtro").addEventListener("change", applicaFiltri);
 });
 
-// ---------- Vista login / app ----------
-
 function mostraLogin() {
   document.getElementById("vista-login").classList.remove("nascosto");
   document.getElementById("vista-app").classList.add("nascosto");
@@ -66,13 +64,9 @@ function mostraErroreLogin(msg) {
   mostraLogin();
 }
 
-// ---------- Inizializzazione app ----------
-
 async function inizializzaApp() {
   document.getElementById("nome-utente").textContent = currentUserData?.nome || currentUser.email;
-
   document.getElementById("fab-carica").classList.toggle("nascosto", !isFamiliare());
-
   categorieCache = await caricaCategorie();
   popolaSelectCategorie();
   await renderListaDocumenti();
@@ -81,7 +75,6 @@ async function inizializzaApp() {
 function popolaSelectCategorie() {
   const selectFiltro = document.getElementById("select-categoria-filtro");
   const selectUpload = document.getElementById("upload-categoria");
-
   const categorieDaMostrare = categorieVisibiliUtente() ?? categorieCache.map((c) => c.nome);
 
   selectFiltro.innerHTML = '<option value="">Tutte le categorie</option>';
@@ -96,8 +89,6 @@ function popolaSelectCategorie() {
 
   selectUpload.innerHTML += `<option value="__nuova__">+ Nuova categoria...</option>`;
 }
-
-// ---------- Lista / filtri ----------
 
 function applicaFiltri() {
   filtriAttivi = {
@@ -147,8 +138,6 @@ function renderCardDocumento(doc) {
     </div>
   `;
 }
-
-// ---------- Modale upload ----------
 
 function apriModaleCarica() {
   document.getElementById("modale-carica").classList.remove("nascosto");
@@ -220,8 +209,6 @@ async function gestisciCaricaDocumento(e) {
   }
 }
 
-// ---------- Dettaglio documento ----------
-
 async function apriDettaglioDocumento(docId, documentiCache) {
   const doc = documentiCache.find((d) => d.id === docId);
   if (!doc) return;
@@ -255,9 +242,6 @@ async function apriDettaglioDocumento(docId, documentiCache) {
   document.body.insertAdjacentHTML("beforeend", html);
 
   document.getElementById("btn-scarica-doc").addEventListener("click", async () => {
-    // Apriamo subito una finestra vuota, in modo sincrono rispetto al click:
-    // Safari blocca window.open() se avviene dopo un'attesa asincrona (await),
-    // perché non lo riconosce più come conseguenza diretta del click.
     const finestra = window.open("", "_blank");
     try {
       const url = await ottieniUrlDownload(doc.storageRef);
@@ -298,8 +282,6 @@ async function apriDettaglioDocumento(docId, documentiCache) {
     });
   }
 }
-
-// ---------- Modale modifica documento ----------
 
 function apriModaleModifica(doc) {
   const dataValue = doc.dataDocumento
@@ -383,8 +365,6 @@ function apriModaleModifica(doc) {
     }
   });
 }
-
-// ---------- Utility ----------
 
 function escapeHtml(str) {
   if (!str) return "";
