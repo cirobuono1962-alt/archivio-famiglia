@@ -127,13 +127,16 @@ function renderCardDocumento(doc) {
     : "—";
   const tagHtml = (doc.tag || []).map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("");
 
+  const numAllegati = ottieniAllegati(doc).length;
+  const badgeAllegati = numAllegati > 1 ? `<span class="tag-pill">📎 ${numAllegati} allegati</span>` : "";
+
   return `
     <div class="card-documento" data-id="${doc.id}">
       <div class="icona-categoria">${iniziale(doc.categoria)}</div>
       <div class="info">
         <div class="titolo">${escapeHtml(doc.titolo)}</div>
         <div class="dettagli">${escapeHtml(doc.categoria)} · ${escapeHtml(doc.intestatario || "—")} · ${dataStr}</div>
-        <div style="margin-top:6px">${tagHtml}</div>
+        <div style="margin-top:6px">${tagHtml}${badgeAllegati}</div>
       </div>
     </div>
   `;
@@ -167,8 +170,8 @@ document.addEventListener("change", (e) => {
 async function gestisciCaricaDocumento(e) {
   e.preventDefault();
 
-  const file = document.getElementById("upload-file").files[0];
-  if (!file) return;
+  const files = document.getElementById("upload-file").files;
+  if (!files || files.length === 0) return;
 
   const meta = {
     titolo: document.getElementById("upload-titolo").value.trim(),
@@ -196,7 +199,7 @@ async function gestisciCaricaDocumento(e) {
   btnSubmit.disabled = true;
 
   try {
-    await caricaDocumento(file, meta, (pct) => {
+    await caricaDocumento(files, meta, (pct) => {
       fillEl.style.width = `${pct}%`;
     });
     chiudiModale();
@@ -218,6 +221,20 @@ async function apriDettaglioDocumento(docId, documentiCache) {
     : "—";
 
   const puoModificare = puoScrivere();
+  const allegati = ottieniAllegati(doc);
+
+  const allegatiHtml = allegati
+    .map(
+      (a, idx) => `
+      <div class="card-documento" style="cursor:pointer; padding:10px 14px;" data-allegato-idx="${idx}">
+        <div class="icona-categoria" style="width:34px; height:34px; font-size:1rem;">📄</div>
+        <div class="info">
+          <div class="titolo" style="font-size:0.9rem;">${escapeHtml(a.nomeFile)}</div>
+        </div>
+      </div>
+    `
+    )
+    .join("");
 
   const html = `
     <div class="overlay" id="overlay-dettaglio">
@@ -229,32 +246,39 @@ async function apriDettaglioDocumento(docId, documentiCache) {
         <div style="margin:12px 0">
           ${(doc.tag || []).map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}
         </div>
-        <div class="modale-azioni">
-          <button class="btn btn-primario" id="btn-scarica-doc">Scarica / Apri</button>
-          ${puoModificare ? '<button class="btn btn-secondario" id="btn-modifica-doc">Modifica</button>' : ""}
+
+        <p style="font-size:0.85rem; font-weight:600; color:var(--colore-testo-secondario); margin-bottom:8px;">
+          ${allegati.length === 1 ? "Allegato" : `Allegati (${allegati.length})`}
+        </p>
+        <div id="lista-allegati-dettaglio" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+          ${allegatiHtml}
         </div>
-        ${puoModificare ? '<button class="btn btn-pericolo btn-blocco" id="btn-elimina-doc" style="margin-top:10px">Elimina</button>' : ""}
-        <button class="btn btn-secondario btn-blocco" id="btn-chiudi-dettaglio" style="margin-top:10px">Chiudi</button>
+
+        ${puoModificare ? '<button class="btn btn-secondario btn-blocco" id="btn-modifica-doc" style="margin-bottom:10px">Modifica</button>' : ""}
+        ${puoModificare ? '<button class="btn btn-pericolo btn-blocco" id="btn-elimina-doc" style="margin-bottom:10px">Elimina</button>' : ""}
+        <button class="btn btn-secondario btn-blocco" id="btn-chiudi-dettaglio">Chiudi</button>
       </div>
     </div>
   `;
 
   document.body.insertAdjacentHTML("beforeend", html);
 
-  document.getElementById("btn-scarica-doc").addEventListener("click", async () => {
-    const btnScarica = document.getElementById("btn-scarica-doc");
-    const testoOriginale = btnScarica.textContent;
-    btnScarica.disabled = true;
-    btnScarica.textContent = "Apertura...";
-    try {
-      const url = await ottieniUrlDownload(doc.storageRef);
-      await new Promise((r) => setTimeout(r, 500));
-      window.location.href = url;
-    } catch (err) {
-      alert("Impossibile aprire il file: " + (err.message || "errore sconosciuto"));
-      btnScarica.disabled = false;
-      btnScarica.textContent = testoOriginale;
-    }
+  // Click su un allegato → scarica/apri quello specifico
+  document.querySelectorAll("#lista-allegati-dettaglio [data-allegato-idx]").forEach((el) => {
+    el.addEventListener("click", async () => {
+      const idx = parseInt(el.dataset.allegatoIdx, 10);
+      const allegato = allegati[idx];
+      const testoOriginale = el.querySelector(".titolo").textContent;
+      el.querySelector(".titolo").textContent = "Apertura...";
+      try {
+        const url = await ottieniUrlDownload(allegato.storageRef);
+        await new Promise((r) => setTimeout(r, 500));
+        window.location.href = url;
+      } catch (err) {
+        alert("Impossibile aprire il file: " + (err.message || "errore sconosciuto"));
+        el.querySelector(".titolo").textContent = testoOriginale;
+      }
+    });
   });
 
   document.getElementById("btn-chiudi-dettaglio").addEventListener("click", () => {
@@ -264,9 +288,12 @@ async function apriDettaglioDocumento(docId, documentiCache) {
   const btnElimina = document.getElementById("btn-elimina-doc");
   if (btnElimina) {
     btnElimina.addEventListener("click", async () => {
-      if (!confirm(`Eliminare definitivamente "${doc.titolo}"?`)) return;
+      const conferma = allegati.length > 1
+        ? `Eliminare definitivamente "${doc.titolo}" e tutti i suoi ${allegati.length} allegati?`
+        : `Eliminare definitivamente "${doc.titolo}"?`;
+      if (!confirm(conferma)) return;
       try {
-        await eliminaDocumento(doc.id, doc.storageRef);
+        await eliminaDocumento(doc.id, doc);
         document.getElementById("overlay-dettaglio").remove();
         await renderListaDocumenti();
       } catch (err) {
