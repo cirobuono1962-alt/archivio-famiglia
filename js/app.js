@@ -208,10 +208,7 @@ async function gestisciCaricaDocumento(e) {
     btnSubmit.disabled = false;
   }
 }
-Bene, 210 righe per il Blocco 1 è coerente con quanto atteso. Ora aggiungiamo il Blocco 2.
-Blocco 2 — Clicca alla fine del testo appena incollato
-Assicurati che il cursore sia posizionato subito dopo l'ultima riga del Blocco 1 (l'ultima } di gestisciCaricaDocumento), poi incolla questo, di seguito (non cancellare nulla, solo aggiungi):
-javascript
+
 async function apriDettaglioDocumento(docId, documentiCache) {
   const doc = documentiCache.find((d) => d.id === docId);
   if (!doc) return;
@@ -238,6 +235,7 @@ async function apriDettaglioDocumento(docId, documentiCache) {
         </div>
         ${puoModificare ? '<button class="btn btn-pericolo btn-blocco" id="btn-elimina-doc" style="margin-top:10px">Elimina</button>' : ""}
         <button class="btn btn-secondario btn-blocco" id="btn-chiudi-dettaglio" style="margin-top:10px">Chiudi</button>
+        <p id="diagnostica-errore" style="color:var(--colore-errore); font-size:0.8rem; margin-top:10px; word-break:break-all;"></p>
       </div>
     </div>
   `;
@@ -246,14 +244,20 @@ async function apriDettaglioDocumento(docId, documentiCache) {
 
   document.getElementById("btn-scarica-doc").addEventListener("click", async () => {
     const btnScarica = document.getElementById("btn-scarica-doc");
+    const diagEl = document.getElementById("diagnostica-errore");
     const testoOriginale = btnScarica.textContent;
     btnScarica.disabled = true;
     btnScarica.textContent = "Apertura...";
+    diagEl.textContent = "";
     try {
       const url = await ottieniUrlDownload(doc.storageRef);
+      btnScarica.textContent = "URL ok, navigo...";
+      diagEl.textContent = "URL ottenuto correttamente.";
+      await new Promise((r) => setTimeout(r, 500));
       window.location.href = url;
     } catch (err) {
-      alert("Impossibile aprire il file: " + err.message);
+      const msg = "ERRORE codice=" + (err.code || "n/d") + " messaggio=" + (err.message || "n/d");
+      diagEl.textContent = msg;
       btnScarica.disabled = false;
       btnScarica.textContent = testoOriginale;
     }
