@@ -254,9 +254,15 @@ async function apriDettaglioDocumento(docId, documentiCache) {
           ${allegatiHtml}
         </div>
 
+        ${puoModificare ? '<button class="btn btn-secondario btn-blocco" id="btn-aggiungi-allegato" style="margin-bottom:10px">+ Aggiungi allegato</button>' : ""}
         ${puoModificare ? '<button class="btn btn-secondario btn-blocco" id="btn-modifica-doc" style="margin-bottom:10px">Modifica</button>' : ""}
         ${puoModificare ? '<button class="btn btn-pericolo btn-blocco" id="btn-elimina-doc" style="margin-bottom:10px">Elimina</button>' : ""}
         <button class="btn btn-secondario btn-blocco" id="btn-chiudi-dettaglio">Chiudi</button>
+
+        <input type="file" id="input-nuovo-allegato" multiple style="display:none" />
+        <div id="progresso-nuovo-allegato" class="barra-progresso nascosto" style="margin-top:10px">
+          <div id="progresso-nuovo-allegato-fill" class="barra-progresso-fill" style="width:0%"></div>
+        </div>
       </div>
     </div>
   `;
@@ -307,6 +313,44 @@ async function apriDettaglioDocumento(docId, documentiCache) {
     btnModifica.addEventListener("click", () => {
       document.getElementById("overlay-dettaglio").remove();
       apriModaleModifica(doc);
+    });
+  }
+
+  const btnAggiungiAllegato = document.getElementById("btn-aggiungi-allegato");
+  if (btnAggiungiAllegato) {
+    const inputFile = document.getElementById("input-nuovo-allegato");
+
+    btnAggiungiAllegato.addEventListener("click", () => {
+      inputFile.click();
+    });
+
+    inputFile.addEventListener("change", async () => {
+      const nuoviFile = inputFile.files;
+      if (!nuoviFile || nuoviFile.length === 0) return;
+
+      const progressoEl = document.getElementById("progresso-nuovo-allegato");
+      const fillEl = document.getElementById("progresso-nuovo-allegato-fill");
+
+      btnAggiungiAllegato.disabled = true;
+      btnAggiungiAllegato.textContent = "Caricamento...";
+      progressoEl.classList.remove("nascosto");
+
+      try {
+        const allegatiAggiornati = await aggiungiAllegati(doc.id, doc, nuoviFile, (pct) => {
+          fillEl.style.width = `${pct}%`;
+        });
+        doc.allegati = allegatiAggiornati;
+        delete doc.storageRef;
+        document.getElementById("overlay-dettaglio").remove();
+        await renderListaDocumenti();
+        apriDettaglioDocumento(doc.id, [doc]);
+      } catch (err) {
+        console.error(err);
+        alert("Errore durante il caricamento dell'allegato: " + err.message);
+        btnAggiungiAllegato.disabled = false;
+        btnAggiungiAllegato.textContent = "+ Aggiungi allegato";
+        progressoEl.classList.add("nascosto");
+      }
     });
   }
 }
