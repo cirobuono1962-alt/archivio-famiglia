@@ -70,7 +70,9 @@ function mostraErroreLogin(msg) {
 
 async function inizializzaApp() {
   document.getElementById("nome-utente").textContent = currentUserData?.nome || currentUser.email;
+
   document.getElementById("fab-carica").classList.toggle("nascosto", !isFamiliare());
+
   categorieCache = await caricaCategorie();
   popolaSelectCategorie();
   await renderListaDocumenti();
@@ -79,6 +81,7 @@ async function inizializzaApp() {
 function popolaSelectCategorie() {
   const selectFiltro = document.getElementById("select-categoria-filtro");
   const selectUpload = document.getElementById("upload-categoria");
+
   const categorieDaMostrare = categorieVisibiliUtente() ?? categorieCache.map((c) => c.nome);
 
   selectFiltro.innerHTML = '<option value="">Tutte le categorie</option>';
@@ -252,10 +255,19 @@ async function apriDettaglioDocumento(docId, documentiCache) {
   document.body.insertAdjacentHTML("beforeend", html);
 
   document.getElementById("btn-scarica-doc").addEventListener("click", async () => {
+    // Apriamo subito una finestra vuota, in modo sincrono rispetto al click:
+    // Safari blocca window.open() se avviene dopo un'attesa asincrona (await),
+    // perché non lo riconosce più come conseguenza diretta del click.
+    const finestra = window.open("", "_blank");
     try {
       const url = await ottieniUrlDownload(doc.storageRef);
-      window.open(url, "_blank");
+      if (finestra) {
+        finestra.location.href = url;
+      } else {
+        window.location.href = url;
+      }
     } catch (err) {
+      if (finestra) finestra.close();
       alert("Impossibile aprire il file: " + err.message);
     }
   });
