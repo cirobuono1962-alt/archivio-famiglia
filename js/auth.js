@@ -41,23 +41,46 @@ function isAdmin() {
   return currentUserData?.ruolo === "admin";
 }
 
+/**
+ * Vede E modifica/carica/elimina tutti i documenti (esclusa gestione categorie/utenti).
+ */
 function isFamiliare() {
   return currentUserData?.ruolo === "familiare" || isAdmin();
 }
 
+/**
+ * Vede tutti i documenti di tutte le categorie, ma NON può modificare,
+ * caricare o eliminare nulla (sola consultazione).
+ */
+function isLettore() {
+  return currentUserData?.ruolo === "lettore";
+}
+
+/**
+ * Vede solo le categorie a lui assegnate, non può modificare nulla.
+ */
 function isEsterno() {
   return currentUserData?.ruolo === "esterno";
 }
 
 /**
+ * True se l'utente può caricare/modificare/eliminare documenti.
+ * (admin e familiare possono scrivere; lettore ed esterno solo leggere)
+ */
+function puoScrivere() {
+  return isFamiliare(); // isFamiliare() include già isAdmin()
+}
+
+/**
  * Restituisce le categorie visibili per l'utente corrente.
- * null = vede tutte le categorie (admin/familiare)
+ * null = vede tutte le categorie (admin/familiare/lettore)
+ * array = vede solo quelle elencate (esterno)
  */
 function categorieVisibiliUtente() {
   if (isEsterno()) {
     return currentUserData?.categorieVisibili || [];
   }
-  return null; // nessun filtro
+  return null; // nessun filtro: admin, familiare, lettore vedono tutto
 }
 
 function mapAuthError(code) {
