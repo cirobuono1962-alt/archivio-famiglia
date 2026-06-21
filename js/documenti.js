@@ -180,3 +180,70 @@ async function eliminaDocumento(docId, doc) {
 async function aggiornaDocumento(docId, modifiche) {
   await db.collection(COLLECTION_DOCUMENTI).doc(docId).update(modifiche);
 }
+
+/**
+ * Aggiunge uno o più nuovi allegati a un documento esistente, senza
+ * toccare quelli già presenti. Gestisce anche la migrazione automatica
+ * dei documenti vecchi (formato storageRef singolo) al nuovo formato
+ * con array "allegati", la prima volta che gli si aggiunge un file.
+ *
+ * @param {string} docId
+ * @param {Object} doc - il documento Firestore corrente (serve per leggere categoria e allegati esistenti)
+ * @param {FileList|File[]} nuoviFile
+ * @param {Function} onProgress - callback (percentuale 0-100)
+ */
+async function aggiungiAllegati(docId, doc, nuoviFile, onProgress) {
+  if (!currentUser) throw new Error("Devi essere autenticato per aggiungere allegati.");
+
+  const listaFile = Array.from(nuoviFile);
+  if (listaFile.length === 0) throw new Error("Nessun file selezionato.");
+
+  const allegatiEsistenti = ottieniAllegati(doc);
+
+  const dimensioneTotale = listaFile.reduce((tot, f) => tot + f.size, 0);
+  let caricatoTotale = 0;
+
+  const nuoviAllegati = [];
+
+  for (const file of listaFile) {
+    const estensione = file.name.includes(".") ? file.name.split(".").pop() : "bin";
+    const storagePath = `documenti/${doc.categoria}/${docId}/${Date.now()}_${estensione}`;
+    const storageRef = storage.ref(storagePath);
+    const uploadTask = storageRef.put(file);
+
+    let caricatoFilePrecedente = 0;
+
+    await new Promise((resolve, reject) => {
+      uploadTask.on(
+        "state_changed",
+        (snapshot) => {
+          const incremento = snapshot.bytesTransferred - caricatoFilePrecedente;
+          caricatoFilePrecedente = snapshot.bytesTransferred;
+          caricatoTotale += incremento;
+          if (onProgress) onProgress((caricatoTotale / dimensioneTotale) * 100);
+        },
+        (err) => reject(err),
+        () => resolve()
+      );
+    });
+
+    nuoviAllegati.push({
+      nomeFile: file.name,
+      storageRef: storagePath,
+      dimensione: file.size,
+    });
+  }
+
+  const allegatiAggiornati = [...allegatiEsistenti, ...nuoviAllegati];
+
+  // Scriviamo l'array completo aggiornato e rimuoviamo il vecchio campo
+  // storageRef singolo se presente (migrazione al nuovo formato).
+  const aggiornamento = { allegati: allegatiAggiornati };
+  if (doc.storageRef) {
+    aggiornamento.storageRef = firebase.firestore.FieldValue.delete();
+  }
+
+  await db.collection(COLLECTION_DOCUMENTI).doc(docId).update(aggiornamento);
+
+  return allegatiAggiornati;
+}
