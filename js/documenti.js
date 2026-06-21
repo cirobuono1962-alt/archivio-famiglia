@@ -20,29 +20,55 @@ async function creaCategoria(nome, icona = null, colore = null) {
   return ref.id;
 }
 
-async function caricaDocumento(file, meta, onProgress) {
+/**
+ * Carica un nuovo documento con uno o più file allegati.
+ * @param {FileList|File[]} files - uno o più file selezionati dall'utente
+ * @param {Object} meta - { titolo, categoria, tag, intestatario, dataDocumento, visibilita }
+ * @param {Function} onProgress - callback (percentuale 0-100, calcolata sul totale di tutti i file)
+ */
+async function caricaDocumento(files, meta, onProgress) {
   if (!currentUser) throw new Error("Devi essere autenticato per caricare documenti.");
+
+  const listaFile = Array.from(files);
+  if (listaFile.length === 0) throw new Error("Nessun file selezionato.");
 
   const docRef = db.collection(COLLECTION_DOCUMENTI).doc();
   const docId = docRef.id;
 
-  const estensione = file.name.split(".").pop();
-  const storagePath = `documenti/${meta.categoria}/${docId}/originale.${estensione}`;
-  const storageRef = storage.ref(storagePath);
+  const dimensioneTotale = listaFile.reduce((tot, f) => tot + f.size, 0);
+  let caricatoTotale = 0;
 
-  const uploadTask = storageRef.put(file);
+  const allegati = [];
 
-  await new Promise((resolve, reject) => {
-    uploadTask.on(
-      "state_changed",
-      (snapshot) => {
-        const pct = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        if (onProgress) onProgress(pct);
-      },
-      (err) => reject(err),
-      () => resolve()
-    );
-  });
+  for (const file of listaFile) {
+    const estensione = file.name.includes(".") ? file.name.split(".").pop() : "bin";
+    // Nome file sanificato per evitare problemi di path (manteniamo il nome originale come metadata separato)
+    const storagePath = `documenti/${meta.categoria}/${docId}/${Date.now()}_${estensione}`;
+    const storageRef = storage.ref(storagePath);
+    const uploadTask = storageRef.put(file);
+
+    let caricatoFilePrecedente = 0;
+
+    await new Promise((resolve, reject) => {
+      uploadTask.on(
+        "state_changed",
+        (snapshot) => {
+          const incremento = snapshot.bytesTransferred - caricatoFilePrecedente;
+          caricatoFilePrecedente = snapshot.bytesTransferred;
+          caricatoTotale += incremento;
+          if (onProgress) onProgress((caricatoTotale / dimensioneTotale) * 100);
+        },
+        (err) => reject(err),
+        () => resolve()
+      );
+    });
+
+    allegati.push({
+      nomeFile: file.name,
+      storageRef: storagePath,
+      dimensione: file.size,
+    });
+  }
 
   await docRef.set({
     titolo: meta.titolo,
@@ -53,7 +79,7 @@ async function caricaDocumento(file, meta, onProgress) {
       ? firebase.firestore.Timestamp.fromDate(new Date(meta.dataDocumento))
       : null,
     dataCaricamento: firebase.firestore.FieldValue.serverTimestamp(),
-    storageRef: storagePath,
+    allegati: allegati,
     thumbnailRef: null,
     caricatoDa: currentUser.uid,
     visibilita: meta.visibilita || "famiglia",
@@ -63,44 +89,43 @@ async function caricaDocumento(file, meta, onProgress) {
 }
 
 /**
+ * Restituisce la lista allegati di un documento, gestendo la retrocompatibilità
+ * con i documenti vecchi che avevano un singolo campo "storageRef" invece
+ * dell'array "allegati".
+ */
+function ottieniAllegati(doc) {
+  if (Array.isArray(doc.allegati) && doc.allegati.length > 0) {
+    return doc.allegati;
+  }
+  // Formato vecchio: un solo file su storageRef diretto
+  if (doc.storageRef) {
+    return [{ nomeFile: doc.titolo || "File", storageRef: doc.storageRef, dimensione: null }];
+  }
+  return [];
+}
+
+/**
  * Query documenti con filtri opzionali.
  * @param {Object} filtri - { categoria, tag, intestatario, testoRicerca }
- *
- * IMPORTANTE: per gli utenti con ruolo "esterno", la query a Firestore
- * DEVE filtrare per categoria lato server con .where(), perché le
- * Security Rules negano la lettura dei singoli documenti di categorie
- * non consentite. Se la query provasse a leggere TUTTI i documenti
- * (anche quelli di categorie vietate) per poi filtrare lato client,
- * Firestore restituirebbe un errore di permessi sull'intera lettura,
- * non solo sui documenti vietati.
- *
- * Per admin/familiare invece (che vedono tutto), manteniamo la lettura
- * senza .where() combinato con orderBy, per evitare la necessità di
- * creare indici compositi manualmente.
  */
 async function cercaDocumenti(filtri = {}) {
-  const categorieConsentite = categorieVisibiliUtente(); // null per admin/familiare, array per esterno
+  const categorieConsentite = categorieVisibiliUtente();
 
   let risultati;
 
   if (categorieConsentite !== null) {
-    // Ruolo "esterno": leggiamo solo le categorie consentite, una query per categoria.
-    // Necessario per rispettare le Security Rules (vedi nota sopra).
     const queries = categorieConsentite.map((cat) =>
       db.collection(COLLECTION_DOCUMENTI).where("categoria", "==", cat).get()
     );
     const snapshots = await Promise.all(queries);
     risultati = snapshots.flatMap((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() })));
 
-    // Ordiniamo lato client per data di caricamento (più recenti prima),
-    // dato che qui non possiamo usare orderBy combinato senza indice composito.
     risultati.sort((a, b) => {
       const da = a.dataCaricamento?.seconds || 0;
       const db_ = b.dataCaricamento?.seconds || 0;
       return db_ - da;
     });
   } else {
-    // Ruolo admin/familiare: vede tutto, lettura semplice + filtro lato client.
     const snap = await db.collection(COLLECTION_DOCUMENTI).orderBy("dataCaricamento", "desc").get();
     risultati = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   }
@@ -131,10 +156,24 @@ async function ottieniUrlDownload(storagePath) {
   return await storage.ref(storagePath).getDownloadURL();
 }
 
-async function eliminaDocumento(docId, storagePath) {
-  await storage.ref(storagePath).delete().catch((err) => {
-    console.warn("File storage non trovato o già eliminato:", err.message);
-  });
+/**
+ * Elimina un documento e tutti i suoi allegati (gestisce sia il formato
+ * nuovo con array "allegati" che il vecchio con "storageRef" singolo).
+ */
+async function eliminaDocumento(docId, doc) {
+  const allegati = ottieniAllegati(doc);
+
+  await Promise.all(
+    allegati.map((a) =>
+      storage
+        .ref(a.storageRef)
+        .delete()
+        .catch((err) => {
+          console.warn("File storage non trovato o già eliminato:", err.message);
+        })
+    )
+  );
+
   await db.collection(COLLECTION_DOCUMENTI).doc(docId).delete();
 }
 
