@@ -33,16 +33,13 @@ async function creaCategoria(nome, icona = null, colore = null) {
 async function caricaDocumento(file, meta, onProgress) {
   if (!currentUser) throw new Error("Devi essere autenticato per caricare documenti.");
 
-  // 1. Crea prima il documento Firestore per ottenere un docId stabile
   const docRef = db.collection(COLLECTION_DOCUMENTI).doc();
   const docId = docRef.id;
 
-  // 2. Path su Storage organizzato per categoria/docId
   const estensione = file.name.split(".").pop();
   const storagePath = `documenti/${meta.categoria}/${docId}/originale.${estensione}`;
   const storageRef = storage.ref(storagePath);
 
-  // 3. Upload con tracking progresso
   const uploadTask = storageRef.put(file);
 
   await new Promise((resolve, reject) => {
@@ -57,7 +54,6 @@ async function caricaDocumento(file, meta, onProgress) {
     );
   });
 
-  // 4. Scrivi i metadata su Firestore
   await docRef.set({
     titolo: meta.titolo,
     categoria: meta.categoria,
@@ -79,24 +75,28 @@ async function caricaDocumento(file, meta, onProgress) {
 /**
  * Query documenti con filtri opzionali.
  * @param {Object} filtri - { categoria, tag, intestatario, testoRicerca }
+ *
+ * Nota: i filtri sono applicati lato client (non con .where() su Firestore)
+ * per evitare la necessità di creare indici compositi manualmente in console
+ * ogni volta che si combina un filtro con l'ordinamento per data. Per i volumi
+ * di un archivio familiare (centinaia di documenti, non milioni) le performance
+ * restano ottime.
  */
 async function cercaDocumenti(filtri = {}) {
-  let query = db.collection(COLLECTION_DOCUMENTI);
-
-  if (filtri.categoria) {
-    query = query.where("categoria", "==", filtri.categoria);
-  }
-  if (filtri.intestatario) {
-    query = query.where("intestatario", "==", filtri.intestatario);
-  }
-  if (filtri.tag) {
-    query = query.where("tag", "array-contains", filtri.tag);
-  }
-
-  query = query.orderBy("dataCaricamento", "desc");
+  const query = db.collection(COLLECTION_DOCUMENTI).orderBy("dataCaricamento", "desc");
 
   const snap = await query.get();
   let risultati = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  if (filtri.categoria) {
+    risultati = risultati.filter((doc) => doc.categoria === filtri.categoria);
+  }
+  if (filtri.intestatario) {
+    risultati = risultati.filter((doc) => doc.intestatario === filtri.intestatario);
+  }
+  if (filtri.tag) {
+    risultati = risultati.filter((doc) => (doc.tag || []).includes(filtri.tag));
+  }
 
   // Filtro lato client per ruolo "esterno" (categorie consentite)
   const categorieConsentite = categorieVisibiliUtente();
@@ -126,7 +126,6 @@ async function ottieniUrlDownload(storagePath) {
 
 async function eliminaDocumento(docId, storagePath) {
   await storage.ref(storagePath).delete().catch((err) => {
-    // Se il file non esiste più su storage, non blocchiamo l'eliminazione del metadato
     console.warn("File storage non trovato o già eliminato:", err.message);
   });
   await db.collection(COLLECTION_DOCUMENTI).doc(docId).delete();
