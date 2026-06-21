@@ -62,11 +62,48 @@ async function caricaDocumento(file, meta, onProgress) {
   return docId;
 }
 
+/**
+ * Query documenti con filtri opzionali.
+ * @param {Object} filtri - { categoria, tag, intestatario, testoRicerca }
+ *
+ * IMPORTANTE: per gli utenti con ruolo "esterno", la query a Firestore
+ * DEVE filtrare per categoria lato server con .where(), perché le
+ * Security Rules negano la lettura dei singoli documenti di categorie
+ * non consentite. Se la query provasse a leggere TUTTI i documenti
+ * (anche quelli di categorie vietate) per poi filtrare lato client,
+ * Firestore restituirebbe un errore di permessi sull'intera lettura,
+ * non solo sui documenti vietati.
+ *
+ * Per admin/familiare invece (che vedono tutto), manteniamo la lettura
+ * senza .where() combinato con orderBy, per evitare la necessità di
+ * creare indici compositi manualmente.
+ */
 async function cercaDocumenti(filtri = {}) {
-  const query = db.collection(COLLECTION_DOCUMENTI).orderBy("dataCaricamento", "desc");
+  const categorieConsentite = categorieVisibiliUtente(); // null per admin/familiare, array per esterno
 
-  const snap = await query.get();
-  let risultati = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  let risultati;
+
+  if (categorieConsentite !== null) {
+    // Ruolo "esterno": leggiamo solo le categorie consentite, una query per categoria.
+    // Necessario per rispettare le Security Rules (vedi nota sopra).
+    const queries = categorieConsentite.map((cat) =>
+      db.collection(COLLECTION_DOCUMENTI).where("categoria", "==", cat).get()
+    );
+    const snapshots = await Promise.all(queries);
+    risultati = snapshots.flatMap((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+
+    // Ordiniamo lato client per data di caricamento (più recenti prima),
+    // dato che qui non possiamo usare orderBy combinato senza indice composito.
+    risultati.sort((a, b) => {
+      const da = a.dataCaricamento?.seconds || 0;
+      const db_ = b.dataCaricamento?.seconds || 0;
+      return db_ - da;
+    });
+  } else {
+    // Ruolo admin/familiare: vede tutto, lettura semplice + filtro lato client.
+    const snap = await db.collection(COLLECTION_DOCUMENTI).orderBy("dataCaricamento", "desc").get();
+    risultati = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  }
 
   if (filtri.categoria) {
     risultati = risultati.filter((doc) => doc.categoria === filtri.categoria);
@@ -76,11 +113,6 @@ async function cercaDocumenti(filtri = {}) {
   }
   if (filtri.tag) {
     risultati = risultati.filter((doc) => (doc.tag || []).includes(filtri.tag));
-  }
-
-  const categorieConsentite = categorieVisibiliUtente();
-  if (categorieConsentite !== null) {
-    risultati = risultati.filter((doc) => categorieConsentite.includes(doc.categoria));
   }
 
   if (filtri.testoRicerca) {
