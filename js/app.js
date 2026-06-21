@@ -242,17 +242,21 @@ async function apriDettaglioDocumento(docId, documentiCache) {
   document.body.insertAdjacentHTML("beforeend", html);
 
   document.getElementById("btn-scarica-doc").addEventListener("click", async () => {
-    const finestra = window.open("", "_blank");
+    const btnScarica = document.getElementById("btn-scarica-doc");
+    const testoOriginale = btnScarica.textContent;
+    btnScarica.disabled = true;
+    btnScarica.textContent = "Apertura...";
     try {
       const url = await ottieniUrlDownload(doc.storageRef);
-      if (finestra) {
-        finestra.location.href = url;
-      } else {
-        window.location.href = url;
-      }
+      // Navigazione diretta nella stessa scheda invece di window.open():
+      // Safari (specialmente su iOS, specialmente in PWA installate) blocca
+      // i popup in modo molto più aggressivo di Chrome, anche se aperti in
+      // modo sincrono. La navigazione diretta funziona sempre, su tutti i browser.
+      window.location.href = url;
     } catch (err) {
-      if (finestra) finestra.close();
       alert("Impossibile aprire il file: " + err.message);
+      btnScarica.disabled = false;
+      btnScarica.textContent = testoOriginale;
     }
   });
 
