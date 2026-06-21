@@ -66,7 +66,7 @@ function mostraErroreLogin(msg) {
 
 async function inizializzaApp() {
   document.getElementById("nome-utente").textContent = currentUserData?.nome || currentUser.email;
-  document.getElementById("fab-carica").classList.toggle("nascosto", !isFamiliare());
+  document.getElementById("fab-carica").classList.toggle("nascosto", !puoScrivere());
   categorieCache = await caricaCategorie();
   popolaSelectCategorie();
   await renderListaDocumenti();
@@ -217,7 +217,7 @@ async function apriDettaglioDocumento(docId, documentiCache) {
     ? new Date(doc.dataDocumento.seconds * 1000).toLocaleDateString("it-IT")
     : "—";
 
-  const puoModificare = isFamiliare();
+  const puoModificare = puoScrivere();
 
   const html = `
     <div class="overlay" id="overlay-dettaglio">
