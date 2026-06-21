@@ -5,10 +5,6 @@
 const COLLECTION_DOCUMENTI = "documenti";
 const COLLECTION_CATEGORIE = "categorie";
 
-/**
- * Carica la lista categorie esistenti (per popolare select / filtri).
- * Le categorie sono dati, non sono hardcoded: la lista cresce con l'uso.
- */
 async function caricaCategorie() {
   const snap = await db.collection(COLLECTION_CATEGORIE).orderBy("nome").get();
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -24,12 +20,6 @@ async function creaCategoria(nome, icona = null, colore = null) {
   return ref.id;
 }
 
-/**
- * Carica un nuovo documento: file su Storage + metadata su Firestore.
- * @param {File} file - file selezionato dall'utente
- * @param {Object} meta - { titolo, categoria, tag, intestatario, dataDocumento, visibilita }
- * @param {Function} onProgress - callback (percentuale 0-100)
- */
 async function caricaDocumento(file, meta, onProgress) {
   if (!currentUser) throw new Error("Devi essere autenticato per caricare documenti.");
 
@@ -72,16 +62,6 @@ async function caricaDocumento(file, meta, onProgress) {
   return docId;
 }
 
-/**
- * Query documenti con filtri opzionali.
- * @param {Object} filtri - { categoria, tag, intestatario, testoRicerca }
- *
- * Nota: i filtri sono applicati lato client (non con .where() su Firestore)
- * per evitare la necessità di creare indici compositi manualmente in console
- * ogni volta che si combina un filtro con l'ordinamento per data. Per i volumi
- * di un archivio familiare (centinaia di documenti, non milioni) le performance
- * restano ottime.
- */
 async function cercaDocumenti(filtri = {}) {
   const query = db.collection(COLLECTION_DOCUMENTI).orderBy("dataCaricamento", "desc");
 
@@ -98,13 +78,11 @@ async function cercaDocumenti(filtri = {}) {
     risultati = risultati.filter((doc) => (doc.tag || []).includes(filtri.tag));
   }
 
-  // Filtro lato client per ruolo "esterno" (categorie consentite)
   const categorieConsentite = categorieVisibiliUtente();
   if (categorieConsentite !== null) {
     risultati = risultati.filter((doc) => categorieConsentite.includes(doc.categoria));
   }
 
-  // Ricerca testuale semplice su titolo (Firestore non supporta full-text nativo)
   if (filtri.testoRicerca) {
     const q = filtri.testoRicerca.toLowerCase();
     risultati = risultati.filter(
@@ -117,9 +95,6 @@ async function cercaDocumenti(filtri = {}) {
   return risultati;
 }
 
-/**
- * Ottiene l'URL di download temporaneo per un file su Storage.
- */
 async function ottieniUrlDownload(storagePath) {
   return await storage.ref(storagePath).getDownloadURL();
 }
