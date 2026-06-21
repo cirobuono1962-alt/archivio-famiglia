@@ -53,7 +53,6 @@ async function gestisciLogin(e) {
 
   try {
     await login(email, password);
-    // onAuthChange gestirà il passaggio alla vista app
   } catch (err) {
     erroreEl.textContent = err;
   } finally {
@@ -71,10 +70,7 @@ function mostraErroreLogin(msg) {
 
 async function inizializzaApp() {
   document.getElementById("nome-utente").textContent = currentUserData?.nome || currentUser.email;
-
-  // Mostra pulsante upload solo a chi può scrivere
   document.getElementById("fab-carica").classList.toggle("nascosto", !isFamiliare());
-
   categorieCache = await caricaCategorie();
   popolaSelectCategorie();
   await renderListaDocumenti();
@@ -83,7 +79,6 @@ async function inizializzaApp() {
 function popolaSelectCategorie() {
   const selectFiltro = document.getElementById("select-categoria-filtro");
   const selectUpload = document.getElementById("upload-categoria");
-
   const categorieDaMostrare = categorieVisibiliUtente() ?? categorieCache.map((c) => c.nome);
 
   selectFiltro.innerHTML = '<option value="">Tutte le categorie</option>';
@@ -246,8 +241,9 @@ async function apriDettaglioDocumento(docId, documentiCache) {
         </div>
         <div class="modale-azioni">
           <button class="btn btn-primario" id="btn-scarica-doc">Scarica / Apri</button>
-          ${puoModificare ? '<button class="btn btn-pericolo" id="btn-elimina-doc">Elimina</button>' : ""}
+          ${puoModificare ? '<button class="btn btn-secondario" id="btn-modifica-doc">Modifica</button>' : ""}
         </div>
+        ${puoModificare ? '<button class="btn btn-pericolo btn-blocco" id="btn-elimina-doc" style="margin-top:10px">Elimina</button>' : ""}
         <button class="btn btn-secondario btn-blocco" id="btn-chiudi-dettaglio" style="margin-top:10px">Chiudi</button>
       </div>
     </div>
@@ -281,6 +277,99 @@ async function apriDettaglioDocumento(docId, documentiCache) {
       }
     });
   }
+
+  const btnModifica = document.getElementById("btn-modifica-doc");
+  if (btnModifica) {
+    btnModifica.addEventListener("click", () => {
+      document.getElementById("overlay-dettaglio").remove();
+      apriModaleModifica(doc);
+    });
+  }
+}
+
+// ---------- Modale modifica documento ----------
+
+function apriModaleModifica(doc) {
+  const dataValue = doc.dataDocumento
+    ? new Date(doc.dataDocumento.seconds * 1000).toISOString().split("T")[0]
+    : "";
+
+  const opzioniCategorie = categorieCache
+    .map((c) => `<option value="${escapeHtml(c.nome)}" ${c.nome === doc.categoria ? "selected" : ""}>${escapeHtml(c.nome)}</option>`)
+    .join("");
+
+  const html = `
+    <div class="overlay" id="overlay-modifica">
+      <div class="modale">
+        <h2>Modifica documento</h2>
+        <form id="form-modifica">
+          <div class="campo">
+            <label for="modifica-titolo">Titolo</label>
+            <input type="text" id="modifica-titolo" required value="${escapeHtml(doc.titolo)}" />
+          </div>
+          <div class="campo">
+            <label for="modifica-categoria">Categoria</label>
+            <select id="modifica-categoria" required>${opzioniCategorie}</select>
+          </div>
+          <div class="campo">
+            <label for="modifica-intestatario">Intestatario</label>
+            <input type="text" id="modifica-intestatario" value="${escapeHtml(doc.intestatario || "")}" />
+          </div>
+          <div class="campo">
+            <label for="modifica-data">Data documento</label>
+            <input type="date" id="modifica-data" value="${dataValue}" />
+          </div>
+          <div class="campo">
+            <label for="modifica-tag">Tag (separati da virgola)</label>
+            <input type="text" id="modifica-tag" value="${escapeHtml((doc.tag || []).join(", "))}" />
+          </div>
+          <div class="modale-azioni">
+            <button type="button" class="btn btn-secondario" id="btn-annulla-modifica">Annulla</button>
+            <button type="submit" class="btn btn-accento" id="btn-salva-modifica">Salva modifiche</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML("beforeend", html);
+
+  document.getElementById("btn-annulla-modifica").addEventListener("click", () => {
+    document.getElementById("overlay-modifica").remove();
+  });
+
+  document.getElementById("form-modifica").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const modifiche = {
+      titolo: document.getElementById("modifica-titolo").value.trim(),
+      categoria: document.getElementById("modifica-categoria").value,
+      intestatario: document.getElementById("modifica-intestatario").value.trim(),
+      dataDocumento: document.getElementById("modifica-data").value
+        ? firebase.firestore.Timestamp.fromDate(new Date(document.getElementById("modifica-data").value))
+        : null,
+      tag: document
+        .getElementById("modifica-tag")
+        .value.split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    };
+
+    const btnSalva = document.getElementById("btn-salva-modifica");
+    btnSalva.disabled = true;
+    btnSalva.textContent = "Salvataggio...";
+
+    try {
+      await aggiornaDocumento(doc.id, modifiche);
+      document.getElementById("overlay-modifica").remove();
+      await renderListaDocumenti();
+    } catch (err) {
+      console.error(err);
+      alert("Errore durante il salvataggio: " + err.message);
+      btnSalva.disabled = false;
+      btnSalva.textContent = "Salva modifiche";
+    }
+  });
 }
 
 // ---------- Utility ----------
