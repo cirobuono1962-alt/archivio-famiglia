@@ -26,6 +26,8 @@
         </div>
         <button type="submit" id="btn-login" class="btn btn-primario btn-blocco">Accedi</button>
         <div class="errore-msg" id="login-errore"></div>
+        <button type="button" id="btn-password-dimenticata" style="background:none; border:none; color:var(--colore-primario); font-size:0.85rem; cursor:pointer; margin-top:12px; text-decoration:underline;">Password dimenticata?</button>
+        <div id="reset-messaggio" style="font-size:0.85rem; margin-top:8px; display:none;"></div>
       </form>
     </div>
   </div>
@@ -36,6 +38,7 @@
       <h1>📁 Archivio Famiglia</h1>
       <div class="utente-info">
         <span id="nome-utente"></span>
+        <button id="btn-cambia-password" class="btn btn-secondario" style="padding:6px 12px; font-size:0.8rem;">🔑 Password</button>
         <button id="btn-logout" class="btn btn-secondario" style="padding:6px 12px; font-size:0.8rem;">Esci</button>
       </div>
     </header>
