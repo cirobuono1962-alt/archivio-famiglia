@@ -83,6 +83,36 @@ function categorieVisibiliUtente() {
   return null; // nessun filtro: admin, familiare, lettore vedono tutto
 }
 
+/**
+ * Invia un'email di reset password all'indirizzo indicato.
+ * Non richiede che l'utente sia loggato.
+ */
+async function inviaResetPassword(email) {
+  try {
+    await auth.sendPasswordResetEmail(email.trim().toLowerCase());
+  } catch (err) {
+    throw mapAuthError(err.code);
+  }
+}
+
+/**
+ * Cambia la password dell'utente attualmente loggato.
+ * Firebase richiede che il login sia recente — se l'utente è loggato
+ * da troppo tempo, Firebase lancia un errore "requires-recent-login"
+ * e bisogna chiedere di fare logout e login di nuovo.
+ */
+async function cambiaPassword(nuovaPassword) {
+  if (!currentUser) throw new Error("Devi essere autenticato.");
+  try {
+    await currentUser.updatePassword(nuovaPassword);
+  } catch (err) {
+    if (err.code === "auth/requires-recent-login") {
+      throw "Per motivi di sicurezza, devi fare logout e login di nuovo prima di cambiare la password.";
+    }
+    throw mapAuthError(err.code);
+  }
+}
+
 function mapAuthError(code) {
   const messaggi = {
     "auth/user-not-found": "Utente non trovato.",
