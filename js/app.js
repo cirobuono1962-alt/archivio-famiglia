@@ -21,6 +21,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("form-login").addEventListener("submit", gestisciLogin);
   document.getElementById("btn-logout").addEventListener("click", () => logout());
+  document.getElementById("btn-password-dimenticata").addEventListener("click", gestisciPasswordDimenticata);
+  document.getElementById("btn-cambia-password").addEventListener("click", apriModaleCambiaPassword);
   document.getElementById("fab-carica").addEventListener("click", apriModaleCarica);
   document.getElementById("btn-chiudi-modale").addEventListener("click", chiudiModale);
   document.getElementById("form-carica").addEventListener("submit", gestisciCaricaDocumento);
@@ -532,6 +534,97 @@ function apriModaleModifica(doc) {
       alert("Errore durante il salvataggio: " + err.message);
       btnSalva.disabled = false;
       btnSalva.textContent = "Salva modifiche";
+    }
+  });
+}
+
+// ---------- Password dimenticata ----------
+
+async function gestisciPasswordDimenticata() {
+  const email = document.getElementById("login-email").value.trim();
+  const msgEl = document.getElementById("reset-messaggio");
+
+  if (!email) {
+    msgEl.style.display = "block";
+    msgEl.style.color = "var(--colore-errore)";
+    msgEl.textContent = "Inserisci la tua email nel campo qui sopra, poi clicca di nuovo.";
+    return;
+  }
+
+  try {
+    await inviaResetPassword(email);
+    msgEl.style.display = "block";
+    msgEl.style.color = "var(--colore-successo)";
+    msgEl.textContent = "✓ Email di reset inviata a " + email + ". Controlla la casella (anche spam).";
+  } catch (err) {
+    msgEl.style.display = "block";
+    msgEl.style.color = "var(--colore-errore)";
+    msgEl.textContent = err;
+  }
+}
+
+// ---------- Cambia password (utente loggato) ----------
+
+function apriModaleCambiaPassword() {
+  const html = `
+    <div class="overlay" id="overlay-cambia-password">
+      <div class="modale">
+        <h2>Cambia password</h2>
+        <form id="form-cambia-password">
+          <div class="campo">
+            <label for="nuova-password">Nuova password</label>
+            <input type="password" id="nuova-password" required minlength="8" placeholder="Almeno 8 caratteri" />
+          </div>
+          <div class="campo">
+            <label for="conferma-password">Conferma password</label>
+            <input type="password" id="conferma-password" required minlength="8" placeholder="Ripeti la nuova password" />
+          </div>
+          <div class="errore-msg" id="cambia-password-errore"></div>
+          <div class="modale-azioni" style="margin-top:16px">
+            <button type="button" class="btn btn-secondario" id="btn-annulla-cambia-password">Annulla</button>
+            <button type="submit" class="btn btn-primario" id="btn-salva-nuova-password">Salva</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML("beforeend", html);
+
+  document.getElementById("btn-annulla-cambia-password").addEventListener("click", () => {
+    document.getElementById("overlay-cambia-password").remove();
+  });
+
+  document.getElementById("form-cambia-password").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nuova = document.getElementById("nuova-password").value;
+    const conferma = document.getElementById("conferma-password").value;
+    const erroreEl = document.getElementById("cambia-password-errore");
+    const btnSalva = document.getElementById("btn-salva-nuova-password");
+
+    erroreEl.textContent = "";
+
+    if (nuova !== conferma) {
+      erroreEl.textContent = "Le due password non coincidono.";
+      return;
+    }
+
+    if (nuova.length < 8) {
+      erroreEl.textContent = "La password deve essere di almeno 8 caratteri.";
+      return;
+    }
+
+    btnSalva.disabled = true;
+    btnSalva.textContent = "Salvataggio...";
+
+    try {
+      await cambiaPassword(nuova);
+      document.getElementById("overlay-cambia-password").remove();
+      alert("✓ Password cambiata con successo.");
+    } catch (err) {
+      erroreEl.textContent = err;
+      btnSalva.disabled = false;
+      btnSalva.textContent = "Salva";
     }
   });
 }
