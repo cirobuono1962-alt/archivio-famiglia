@@ -20,12 +20,6 @@ async function creaCategoria(nome, icona = null, colore = null) {
   return ref.id;
 }
 
-/**
- * Carica un nuovo documento con uno o più file allegati.
- * @param {FileList|File[]} files - uno o più file selezionati dall'utente
- * @param {Object} meta - { titolo, categoria, tag, intestatario, dataDocumento, visibilita }
- * @param {Function} onProgress - callback (percentuale 0-100, calcolata sul totale di tutti i file)
- */
 async function caricaDocumento(files, meta, onProgress) {
   if (!currentUser) throw new Error("Devi essere autenticato per caricare documenti.");
 
@@ -37,16 +31,13 @@ async function caricaDocumento(files, meta, onProgress) {
 
   const dimensioneTotale = listaFile.reduce((tot, f) => tot + f.size, 0);
   let caricatoTotale = 0;
-
   const allegati = [];
 
   for (const file of listaFile) {
     const estensione = file.name.includes(".") ? file.name.split(".").pop() : "bin";
-    // Nome file sanificato per evitare problemi di path (manteniamo il nome originale come metadata separato)
     const storagePath = `documenti/${meta.categoria}/${docId}/${Date.now()}_${estensione}`;
     const storageRef = storage.ref(storagePath);
     const uploadTask = storageRef.put(file);
-
     let caricatoFilePrecedente = 0;
 
     await new Promise((resolve, reject) => {
@@ -63,11 +54,7 @@ async function caricaDocumento(files, meta, onProgress) {
       );
     });
 
-    allegati.push({
-      nomeFile: file.name,
-      storageRef: storagePath,
-      dimensione: file.size,
-    });
+    allegati.push({ nomeFile: file.name, storageRef: storagePath, dimensione: file.size });
   }
 
   await docRef.set({
@@ -78,8 +65,12 @@ async function caricaDocumento(files, meta, onProgress) {
     dataDocumento: meta.dataDocumento
       ? firebase.firestore.Timestamp.fromDate(new Date(meta.dataDocumento))
       : null,
+    dataScadenza: meta.dataScadenza
+      ? firebase.firestore.Timestamp.fromDate(new Date(meta.dataScadenza))
+      : null,
+    giorniPreavviso: meta.giorniPreavviso || 30,
     dataCaricamento: firebase.firestore.FieldValue.serverTimestamp(),
-    allegati: allegati,
+    allegati,
     thumbnailRef: null,
     caricatoDa: currentUser.uid,
     visibilita: meta.visibilita || "famiglia",
@@ -88,16 +79,10 @@ async function caricaDocumento(files, meta, onProgress) {
   return docId;
 }
 
-/**
- * Restituisce la lista allegati di un documento, gestendo la retrocompatibilità
- * con i documenti vecchi che avevano un singolo campo "storageRef" invece
- * dell'array "allegati".
- */
 function ottieniAllegati(doc) {
   if (Array.isArray(doc.allegati) && doc.allegati.length > 0) {
     return doc.allegati;
   }
-  // Formato vecchio: un solo file su storageRef diretto
   if (doc.storageRef) {
     return [{ nomeFile: doc.titolo || "File", storageRef: doc.storageRef, dimensione: null }];
   }
@@ -105,12 +90,25 @@ function ottieniAllegati(doc) {
 }
 
 /**
- * Query documenti con filtri opzionali.
- * @param {Object} filtri - { categoria, tag, intestatario, testoRicerca }
+ * Calcola lo stato di scadenza di un documento.
+ * Restituisce: "scaduto" | "in_scadenza" | "ok" | null (nessuna scadenza)
  */
+function statoScadenza(doc) {
+  if (!doc.dataScadenza) return null;
+  const oggi = new Date();
+  oggi.setHours(0, 0, 0, 0);
+  const scadenza = new Date(doc.dataScadenza.seconds * 1000);
+  scadenza.setHours(0, 0, 0, 0);
+  const giorniPreavviso = doc.giorniPreavviso || 30;
+  const msPreavviso = giorniPreavviso * 24 * 60 * 60 * 1000;
+
+  if (scadenza < oggi) return "scaduto";
+  if (scadenza - oggi <= msPreavviso) return "in_scadenza";
+  return "ok";
+}
+
 async function cercaDocumenti(filtri = {}) {
   const categorieConsentite = categorieVisibiliUtente();
-
   let risultati;
 
   if (categorieConsentite !== null) {
@@ -119,19 +117,31 @@ async function cercaDocumenti(filtri = {}) {
     );
     const snapshots = await Promise.all(queries);
     risultati = snapshots.flatMap((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-
-    risultati.sort((a, b) => {
-      const da = a.dataCaricamento?.seconds || 0;
-      const db_ = b.dataCaricamento?.seconds || 0;
-      return db_ - da;
-    });
   } else {
-    const snap = await db.collection(COLLECTION_DOCUMENTI).orderBy("dataCaricamento", "desc").get();
+    const snap = await db.collection(COLLECTION_DOCUMENTI).get();
     risultati = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   }
 
+  // Ordinamento: per dataDocumento (più recenti prima), senza data in fondo
+  risultati.sort((a, b) => {
+    const da = a.dataDocumento?.seconds ?? -Infinity;
+    const db_ = b.dataDocumento?.seconds ?? -Infinity;
+    return db_ - da;
+  });
+
   if (filtri.categoria) {
     risultati = risultati.filter((doc) => doc.categoria === filtri.categoria);
+  }
+  if (filtri.anno) {
+    risultati = risultati.filter((doc) => {
+      if (!doc.dataDocumento) return false;
+      return new Date(doc.dataDocumento.seconds * 1000).getFullYear() === parseInt(filtri.anno);
+    });
+  }
+  if (filtri.soloScadenze) {
+    risultati = risultati.filter((doc) =>
+      statoScadenza(doc) === "scaduto" || statoScadenza(doc) === "in_scadenza"
+    );
   }
   if (filtri.intestatario) {
     risultati = risultati.filter((doc) => doc.intestatario === filtri.intestatario);
@@ -139,7 +149,6 @@ async function cercaDocumenti(filtri = {}) {
   if (filtri.tag) {
     risultati = risultati.filter((doc) => (doc.tag || []).includes(filtri.tag));
   }
-
   if (filtri.testoRicerca) {
     const q = filtri.testoRicerca.toLowerCase();
     risultati = risultati.filter(
@@ -156,24 +165,15 @@ async function ottieniUrlDownload(storagePath) {
   return await storage.ref(storagePath).getDownloadURL();
 }
 
-/**
- * Elimina un documento e tutti i suoi allegati (gestisce sia il formato
- * nuovo con array "allegati" che il vecchio con "storageRef" singolo).
- */
 async function eliminaDocumento(docId, doc) {
   const allegati = ottieniAllegati(doc);
-
   await Promise.all(
     allegati.map((a) =>
-      storage
-        .ref(a.storageRef)
-        .delete()
-        .catch((err) => {
-          console.warn("File storage non trovato o già eliminato:", err.message);
-        })
+      storage.ref(a.storageRef).delete().catch((err) => {
+        console.warn("File storage non trovato o già eliminato:", err.message);
+      })
     )
   );
-
   await db.collection(COLLECTION_DOCUMENTI).doc(docId).delete();
 }
 
@@ -181,17 +181,6 @@ async function aggiornaDocumento(docId, modifiche) {
   await db.collection(COLLECTION_DOCUMENTI).doc(docId).update(modifiche);
 }
 
-/**
- * Aggiunge uno o più nuovi allegati a un documento esistente, senza
- * toccare quelli già presenti. Gestisce anche la migrazione automatica
- * dei documenti vecchi (formato storageRef singolo) al nuovo formato
- * con array "allegati", la prima volta che gli si aggiunge un file.
- *
- * @param {string} docId
- * @param {Object} doc - il documento Firestore corrente (serve per leggere categoria e allegati esistenti)
- * @param {FileList|File[]} nuoviFile
- * @param {Function} onProgress - callback (percentuale 0-100)
- */
 async function aggiungiAllegati(docId, doc, nuoviFile, onProgress) {
   if (!currentUser) throw new Error("Devi essere autenticato per aggiungere allegati.");
 
@@ -199,10 +188,8 @@ async function aggiungiAllegati(docId, doc, nuoviFile, onProgress) {
   if (listaFile.length === 0) throw new Error("Nessun file selezionato.");
 
   const allegatiEsistenti = ottieniAllegati(doc);
-
   const dimensioneTotale = listaFile.reduce((tot, f) => tot + f.size, 0);
   let caricatoTotale = 0;
-
   const nuoviAllegati = [];
 
   for (const file of listaFile) {
@@ -210,7 +197,6 @@ async function aggiungiAllegati(docId, doc, nuoviFile, onProgress) {
     const storagePath = `documenti/${doc.categoria}/${docId}/${Date.now()}_${estensione}`;
     const storageRef = storage.ref(storagePath);
     const uploadTask = storageRef.put(file);
-
     let caricatoFilePrecedente = 0;
 
     await new Promise((resolve, reject) => {
@@ -227,23 +213,15 @@ async function aggiungiAllegati(docId, doc, nuoviFile, onProgress) {
       );
     });
 
-    nuoviAllegati.push({
-      nomeFile: file.name,
-      storageRef: storagePath,
-      dimensione: file.size,
-    });
+    nuoviAllegati.push({ nomeFile: file.name, storageRef: storagePath, dimensione: file.size });
   }
 
   const allegatiAggiornati = [...allegatiEsistenti, ...nuoviAllegati];
-
-  // Scriviamo l'array completo aggiornato e rimuoviamo il vecchio campo
-  // storageRef singolo se presente (migrazione al nuovo formato).
   const aggiornamento = { allegati: allegatiAggiornati };
   if (doc.storageRef) {
     aggiornamento.storageRef = firebase.firestore.FieldValue.delete();
   }
 
   await db.collection(COLLECTION_DOCUMENTI).doc(docId).update(aggiornamento);
-
   return allegatiAggiornati;
 }
