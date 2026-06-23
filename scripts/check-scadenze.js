@@ -1,5 +1,4 @@
-Eccolo:
-javascript// ============================================================
+// ============================================================
 // CHECK-SCADENZE.JS
 // Gira ogni giorno tramite GitHub Actions.
 // Controlla i documenti in scadenza su Firestore e manda
