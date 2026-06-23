@@ -1,0 +1,12 @@
+{
+     "name": "archivio-famiglia-scripts",
+     "version": "1.0.0",
+     "description": "Script per controllo scadenze Archivio Famiglia",
+     "main": "check-scadenze.js",
+     "dependencies": {
+       "firebase-admin": "^12.1.0"
+     },
+     "engines": {
+       "node": ">=20"
+     }
+   }
