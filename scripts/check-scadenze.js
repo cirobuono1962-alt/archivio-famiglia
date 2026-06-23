@@ -6,7 +6,7 @@
 // ============================================================
 
 const { initializeApp, cert } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
+const { getFirestore, Timestamp } = require("firebase-admin/firestore");
 
 // Credenziali Firebase dal Secret di GitHub (JSON della service account)
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -64,8 +64,10 @@ async function checkScadenze() {
     const giorni = giorniAlla(doc.dataScadenza);
 
     if (giorni < 0) {
+      // Già scaduto — avvisa ogni giorno finché non viene aggiornato
       scaduti.push({ titolo: doc.titolo, categoria: doc.categoria, intestatario: doc.intestatario, giorni, dataScadenza: doc.dataScadenza });
     } else if (giorni === giorniPreavviso || giorni === 0) {
+      // Manca esattamente il preavviso impostato, oppure scade oggi
       inScadenza.push({ titolo: doc.titolo, categoria: doc.categoria, intestatario: doc.intestatario, giorni, dataScadenza: doc.dataScadenza });
     }
   }
@@ -109,4 +111,3 @@ checkScadenze().catch((err) => {
   console.error("Errore:", err);
   process.exit(1);
 });
-Incollalo tutto in scripts/check-scadenze.js, fai commit, poi Run workflow di nuovo.
