@@ -181,6 +181,37 @@ async function aggiornaDocumento(docId, modifiche) {
   await db.collection(COLLECTION_DOCUMENTI).doc(docId).update(modifiche);
 }
 
+/**
+ * Elimina un singolo allegato da un documento esistente.
+ * Rimuove il file da Storage e aggiorna l'array "allegati" in Firestore.
+ * Se era l'ultimo allegato, elimina l'intero documento.
+ */
+async function eliminaAllegato(docId, doc, allegatoIdx) {
+  const allegati = ottieniAllegati(doc);
+  const allegato = allegati[allegatoIdx];
+  if (!allegato) throw new Error("Allegato non trovato.");
+
+  // Elimina il file da Storage
+  await storage.ref(allegato.storageRef).delete().catch((err) => {
+    console.warn("File storage non trovato o già eliminato:", err.message);
+  });
+
+  const allegatiAggiornati = allegati.filter((_, idx) => idx !== allegatoIdx);
+
+  if (allegatiAggiornati.length === 0) {
+    // Era l'ultimo allegato: elimina l'intero documento
+    await db.collection(COLLECTION_DOCUMENTI).doc(docId).delete();
+    return null; // segnala che il documento è stato eliminato
+  }
+
+  // Aggiorna Firestore con l'array allegati senza quello eliminato
+  await db.collection(COLLECTION_DOCUMENTI).doc(docId).update({
+    allegati: allegatiAggiornati,
+  });
+
+  return allegatiAggiornati;
+}
+
 async function aggiungiAllegati(docId, doc, nuoviFile, onProgress) {
   if (!currentUser) throw new Error("Devi essere autenticato per aggiungere allegati.");
 
