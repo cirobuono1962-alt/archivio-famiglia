@@ -320,11 +320,14 @@ async function apriDettaglioDocumento(docId, documentiCache) {
   const allegati = ottieniAllegati(doc);
 
   const allegatiHtml = allegati.map((a, idx) => `
-    <div class="card-documento" style="cursor:pointer; padding:10px 14px;" data-allegato-idx="${idx}">
-      <div class="icona-categoria" style="width:34px; height:34px; font-size:1rem;">📄</div>
-      <div class="info">
-        <div class="titolo" style="font-size:0.9rem;">${escapeHtml(a.nomeFile)}</div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <div class="card-documento" style="cursor:pointer; padding:10px 14px; flex:1;" data-allegato-idx="${idx}">
+        <div class="icona-categoria" style="width:34px; height:34px; font-size:1rem;">📄</div>
+        <div class="info">
+          <div class="titolo" style="font-size:0.9rem;">${escapeHtml(a.nomeFile)}</div>
+        </div>
       </div>
+      ${puoModificare ? `<button class="btn btn-pericolo" style="padding:8px 12px; flex-shrink:0;" data-elimina-allegato-idx="${idx}" title="Elimina questo allegato">🗑️</button>` : ""}
     </div>
   `).join("");
 
@@ -373,6 +376,29 @@ async function apriDettaglioDocumento(docId, documentiCache) {
       } catch (err) {
         alert("Impossibile aprire il file: " + (err.message || "errore sconosciuto"));
         titoloEl.textContent = testoOriginale;
+      }
+    });
+  });
+
+  // Click sui pulsanti elimina singolo allegato
+  document.querySelectorAll("#lista-allegati-dettaglio [data-elimina-allegato-idx]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation(); // evita che il click apra anche il download
+      const idx = parseInt(btn.dataset.eliminaAllegatoIdx, 10);
+      const nomeFile = allegati[idx]?.nomeFile || "questo allegato";
+      if (!confirm(`Eliminare definitivamente "${nomeFile}"?`)) return;
+      try {
+        const allegatiAggiornati = await eliminaAllegato(doc.id, doc, idx);
+        document.getElementById("overlay-dettaglio").remove();
+        await renderListaDocumenti();
+        if (allegatiAggiornati !== null) {
+          // Documento ancora esistente con altri allegati: riapri il dettaglio aggiornato
+          doc.allegati = allegatiAggiornati;
+          delete doc.storageRef;
+          apriDettaglioDocumento(doc.id, [doc]);
+        }
+      } catch (err) {
+        alert("Errore durante l'eliminazione: " + err.message);
       }
     });
   });
