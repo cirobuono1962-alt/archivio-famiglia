@@ -15,18 +15,18 @@ service cloud.firestore {
     }
 
     match /documenti/{docId} {
+      // admin, familiare, lettore vedono tutto; esterno solo le sue categorie
       allow read: if isSignedIn() && (
-        getRuolo() in ["admin", "familiare"] ||
+        getRuolo() in ["admin", "familiare", "lettore"] ||
         (getRuolo() == "esterno" && resource.data.categoria in getCategorieVisibili())
       );
+      // solo admin e familiare possono scrivere (lettore ed esterno sono sola lettura)
       allow create, update: if isSignedIn() && getRuolo() in ["admin", "familiare"];
       allow delete: if isSignedIn() && getRuolo() in ["admin", "familiare"];
     }
 
     match /utenti/{uid} {
-      // ognuno legge solo il proprio profilo (serve per conoscere ruolo/permessi)
       allow read: if isSignedIn() && request.auth.uid == uid;
-      // la creazione/modifica utenti va fatta da console o Admin SDK, mai dal client
       allow write: if false;
     }
 
@@ -34,6 +34,12 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn() && getRuolo() in ["admin", "familiare"];
       allow delete: if isSignedIn() && getRuolo() == "admin";
+    }
+ 
+    match /appuntamenti/{appId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && getRuolo() in ["admin", "familiare"];
+      allow delete: if isSignedIn() && getRuolo() in ["admin", "familiare"];
     }
   }
 }
