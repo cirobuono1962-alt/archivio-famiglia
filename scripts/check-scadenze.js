@@ -1,18 +1,15 @@
 // ============================================================
 // CHECK-SCADENZE.JS
 // Gira ogni giorno tramite GitHub Actions.
-// Controlla i documenti in scadenza su Firestore e manda
-// un messaggio riassuntivo su Telegram.
+// Controlla documenti in scadenza e appuntamenti del giorno/domani
+// e manda un messaggio riassuntivo su Telegram.
 // ============================================================
 
 const { initializeApp, cert } = require("firebase-admin/app");
-const { getFirestore, Timestamp } = require("firebase-admin/firestore");
+const { getFirestore } = require("firebase-admin/firestore");
 
-// Credenziali Firebase dal Secret di GitHub (JSON della service account)
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-
 initializeApp({ credential: cert(serviceAccount) });
-
 const db = getFirestore();
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -23,11 +20,7 @@ async function mandaMessaggioTelegram(testo) {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: TELEGRAM_CHAT_ID,
-      text: testo,
-      parse_mode: "HTML",
-    }),
+    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: testo, parse_mode: "HTML" }),
   });
   const data = await res.json();
   if (!data.ok) throw new Error("Telegram API error: " + JSON.stringify(data));
@@ -41,56 +34,68 @@ function formatData(timestamp) {
 function giorniAlla(timestamp) {
   const oggi = new Date();
   oggi.setHours(0, 0, 0, 0);
-  const scadenza = new Date(timestamp.seconds * 1000);
-  scadenza.setHours(0, 0, 0, 0);
-  return Math.round((scadenza - oggi) / (1000 * 60 * 60 * 24));
+  const data = new Date(timestamp.seconds * 1000);
+  data.setHours(0, 0, 0, 0);
+  return Math.round((data - oggi) / (1000 * 60 * 60 * 24));
 }
 
 async function checkScadenze() {
   console.log("Avvio controllo scadenze:", new Date().toISOString());
 
-  const snap = await db.collection("documenti").get();
-  const oggi = new Date();
-  oggi.setHours(0, 0, 0, 0);
-
+  // ---- DOCUMENTI IN SCADENZA ----
+  const snapDoc = await db.collection("documenti").get();
   const scaduti = [];
   const inScadenza = [];
 
-  for (const docSnap of snap.docs) {
+  for (const docSnap of snapDoc.docs) {
     const doc = docSnap.data();
     if (!doc.dataScadenza) continue;
-
     const giorniPreavviso = doc.giorniPreavviso || 30;
     const giorni = giorniAlla(doc.dataScadenza);
-
     if (giorni < 0) {
-      // Già scaduto — avvisa ogni giorno finché non viene aggiornato
-      scaduti.push({ titolo: doc.titolo, categoria: doc.categoria, intestatario: doc.intestatario, giorni, dataScadenza: doc.dataScadenza });
+      scaduti.push({ ...doc });
     } else if (giorni === giorniPreavviso || giorni === 0) {
-      // Manca esattamente il preavviso impostato, oppure scade oggi
-      inScadenza.push({ titolo: doc.titolo, categoria: doc.categoria, intestatario: doc.intestatario, giorni, dataScadenza: doc.dataScadenza });
+      inScadenza.push({ ...doc, giorni });
     }
   }
 
-  if (scaduti.length === 0 && inScadenza.length === 0) {
-    console.log("Nessuna scadenza da segnalare oggi.");
+  // ---- APPUNTAMENTI OGGI E DOMANI ----
+  const snapApp = await db.collection("appuntamenti").get();
+  const appOggi = [];
+  const appDomani = [];
+
+  for (const appSnap of snapApp.docs) {
+    const app = appSnap.data();
+    if (!app.dataOra) continue;
+    const giorni = giorniAlla(app.dataOra);
+    if (giorni === 0) appOggi.push(app);
+    else if (giorni === 1) appDomani.push(app);
+  }
+
+  const nessunDocumento = scaduti.length === 0 && inScadenza.length === 0;
+  const nessunAppuntamento = appOggi.length === 0 && appDomani.length === 0;
+
+  if (nessunDocumento && nessunAppuntamento) {
+    console.log("Nessuna notifica da inviare oggi.");
     return;
   }
 
-  let messaggio = "📁 <b>Archivio Famiglia — Avvisi scadenze</b>\n\n";
+  let messaggio = "📁 <b>Archivio Famiglia — Avvisi del giorno</b>\n\n";
 
+  // Documenti scaduti
   if (scaduti.length > 0) {
     messaggio += "🔴 <b>Documenti scaduti:</b>\n";
     for (const d of scaduti) {
-      const giorniFA = Math.abs(d.giorni);
+      const giorniFA = Math.abs(giorniAlla(d.dataScadenza));
       messaggio += `• <b>${d.titolo}</b> (${d.categoria}`;
       if (d.intestatario) messaggio += ` — ${d.intestatario}`;
       messaggio += `)\n  Scaduto il ${formatData(d.dataScadenza)} (${giorniFA} giorn${giorniFA === 1 ? "o" : "i"} fa)\n\n`;
     }
   }
 
+  // Documenti in scadenza
   if (inScadenza.length > 0) {
-    messaggio += "🟡 <b>In scadenza:</b>\n";
+    messaggio += "🟡 <b>Documenti in scadenza:</b>\n";
     for (const d of inScadenza) {
       messaggio += `• <b>${d.titolo}</b> (${d.categoria}`;
       if (d.intestatario) messaggio += ` — ${d.intestatario}`;
@@ -101,10 +106,32 @@ async function checkScadenze() {
     }
   }
 
+  // Appuntamenti oggi
+  if (appOggi.length > 0) {
+    messaggio += "📅 <b>Appuntamenti di oggi:</b>\n";
+    for (const a of appOggi) {
+      messaggio += `• <b>${a.titolo}</b>`;
+      if (a.ora) messaggio += ` alle ${a.ora}`;
+      if (a.descrizione) messaggio += `\n  ${a.descrizione}`;
+      messaggio += "\n\n";
+    }
+  }
+
+  // Appuntamenti domani
+  if (appDomani.length > 0) {
+    messaggio += "🔔 <b>Appuntamenti di domani:</b>\n";
+    for (const a of appDomani) {
+      messaggio += `• <b>${a.titolo}</b>`;
+      if (a.ora) messaggio += ` alle ${a.ora}`;
+      if (a.descrizione) messaggio += `\n  ${a.descrizione}`;
+      messaggio += "\n\n";
+    }
+  }
+
   messaggio += `🔗 <a href="https://cirobuono1962-alt.github.io/archivio-famiglia/">Apri l'archivio</a>`;
 
   await mandaMessaggioTelegram(messaggio);
-  console.log(`Messaggio inviato: ${scaduti.length} scaduti, ${inScadenza.length} in scadenza.`);
+  console.log(`Messaggio inviato.`);
 }
 
 checkScadenze().catch((err) => {
