@@ -123,7 +123,7 @@ async function renderListaAppuntamenti() {
 
   } catch (err) {
     console.error(err);
-    container.innerHTML = '<div class="stato-vuoto">Errore nel caricamento degli appuntamenti.</div>';
+    container.innerHTML = `<div class="stato-vuoto">Errore: ${err.code || ''} ${err.message || String(err)}</div>`;
   }
 }
 
