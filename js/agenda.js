@@ -1,18 +1,11 @@
 // ============================================================
-// AGENDA.JS - Gestione appuntamenti (tab dentro la SPA)
-// Il login e l'init sono gestiti da app.js
+// AGENDA.JS - Gestione appuntamenti
+// I listener sono registrati in app.js (inizListeners)
 // ============================================================
 
 const COLLECTION_APPUNTAMENTI = "appuntamenti";
 let appuntamentiCache = [];
 let appuntamentoInModifica = null;
-
-// Listener per il fab e la modale appuntamento — aggiunti dopo il DOMContentLoaded di app.js
-document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("fab-aggiungi").addEventListener("click", apriModaleNuovoAppuntamento);
-  document.getElementById("btn-chiudi-modale-app").addEventListener("click", chiudiModaleAppuntamento);
-  document.getElementById("form-appuntamento").addEventListener("submit", gestisciSalvaAppuntamento);
-});
 
 async function renderListaAppuntamenti() {
   const container = document.getElementById("lista-appuntamenti");
@@ -73,7 +66,6 @@ function renderCardAppuntamento(app) {
   const giorno = data.getDate();
   const mese = data.toLocaleDateString("it-IT", { month: "short" });
   const anno = data.getFullYear();
-
   const isOggi = dataApp.getTime() === oggi.getTime();
   const isPassato = dataApp < oggi;
   const classeExtra = isOggi ? "oggi" : isPassato ? "passato" : "";
@@ -142,7 +134,7 @@ function apriDettaglioAppuntamento(appId) {
         document.getElementById("overlay-dettaglio-app").remove();
         await renderListaAppuntamenti();
       } catch (err) {
-        alert("Errore durante l'eliminazione: " + err.message);
+        alert("Errore: " + err.message);
       }
     });
   }
