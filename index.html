@@ -42,9 +42,7 @@
       align-items: center;
       gap: 14px;
       cursor: pointer;
-      transition: transform 0.1s ease;
     }
-    .card-appuntamento:active { transform: scale(0.99); }
     .data-badge {
       background: var(--colore-primario);
       color: white;
@@ -100,17 +98,6 @@
       </div>
     </header>
 
-    <div class="tab-bar">
-      <button class="tab-btn attivo" data-tab="archivio">
-        <span class="tab-icon">📁</span>
-        Archivio
-      </button>
-      <button class="tab-btn" data-tab="agenda">
-        <span class="tab-icon">📅</span>
-        Agenda
-      </button>
-    </div>
-
     <div id="tab-archivio" class="tab-content attivo">
       <div class="container">
         <div class="toolbar">
@@ -133,6 +120,17 @@
         </div>
       </div>
       <button id="fab-aggiungi" class="fab nascosto" title="Nuovo appuntamento">+</button>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab-btn attivo" data-tab="archivio">
+        <span class="tab-icon">📁</span>
+        Archivio
+      </button>
+      <button class="tab-btn" data-tab="agenda">
+        <span class="tab-icon">📅</span>
+        Agenda
+      </button>
     </div>
   </div>
 
