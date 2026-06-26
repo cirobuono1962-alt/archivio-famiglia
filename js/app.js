@@ -1,32 +1,11 @@
 // ============================================================
-// APP.JS - Logica UI, archivio e navigazione tab
+// APP.JS - Logica UI e orchestrazione viste
 // ============================================================
 
 let categorieCache = [];
 let filtriAttivi = {};
 
-function inizListeners() {
-  document.getElementById("form-login").addEventListener("submit", gestisciLogin);
-  document.getElementById("btn-logout").addEventListener("click", () => logout());
-  document.getElementById("btn-cambia-password").addEventListener("click", apriModaleCambiaPassword);
-  document.getElementById("btn-password-dimenticata").addEventListener("click", gestisciPasswordDimenticata);
-  document.getElementById("fab-carica").addEventListener("click", apriModaleCarica);
-  document.getElementById("btn-chiudi-modale").addEventListener("click", chiudiModale);
-  document.getElementById("form-carica").addEventListener("submit", gestisciCaricaDocumento);
-  document.getElementById("input-ricerca").addEventListener("input", debounce(applicaFiltri, 300));
-  document.getElementById("select-categoria-filtro").addEventListener("change", applicaFiltri);
-  document.getElementById("select-anno-filtro").addEventListener("change", applicaFiltri);
-  document.getElementById("fab-aggiungi").addEventListener("click", apriModaleNuovoAppuntamento);
-  document.getElementById("btn-chiudi-modale-app").addEventListener("click", chiudiModaleAppuntamento);
-  document.getElementById("form-appuntamento").addEventListener("submit", gestisciSalvaAppuntamento);
-
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => cambiaTab(btn.dataset.tab));
-  });
-}
-
-window.addEventListener("load", () => {
-  inizListeners();
+document.addEventListener("DOMContentLoaded", () => {
   onAuthChange(async (user, erroreMsg) => {
     if (erroreMsg) {
       mostraErroreLogin(erroreMsg);
@@ -39,15 +18,18 @@ window.addEventListener("load", () => {
       mostraLogin();
     }
   });
-});
 
-function cambiaTab(nomeTab) {
-  document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("attivo"));
-  document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("attivo"));
-  document.querySelector(`.tab-btn[data-tab="${nomeTab}"]`).classList.add("attivo");
-  document.getElementById(`tab-${nomeTab}`).classList.add("attivo");
-  if (nomeTab === "agenda") renderListaAppuntamenti();
-}
+  document.getElementById("form-login").addEventListener("submit", gestisciLogin);
+  document.getElementById("btn-logout").addEventListener("click", () => logout());
+  document.getElementById("btn-cambia-password").addEventListener("click", apriModaleCambiaPassword);
+  document.getElementById("btn-password-dimenticata").addEventListener("click", gestisciPasswordDimenticata);
+  document.getElementById("fab-carica").addEventListener("click", apriModaleCarica);
+  document.getElementById("btn-chiudi-modale").addEventListener("click", chiudiModale);
+  document.getElementById("form-carica").addEventListener("submit", gestisciCaricaDocumento);
+  document.getElementById("input-ricerca").addEventListener("input", debounce(applicaFiltri, 300));
+  document.getElementById("select-categoria-filtro").addEventListener("change", applicaFiltri);
+  document.getElementById("select-anno-filtro").addEventListener("change", applicaFiltri);
+});
 
 function mostraLogin() {
   document.getElementById("vista-login").classList.remove("nascosto");
@@ -88,7 +70,6 @@ function mostraErroreLogin(msg) {
 async function inizializzaApp() {
   document.getElementById("nome-utente").textContent = currentUserData?.nome || currentUser.email;
   document.getElementById("fab-carica").classList.toggle("nascosto", !puoScrivere());
-  document.getElementById("fab-aggiungi").classList.toggle("nascosto", !puoScrivere());
   categorieCache = await caricaCategorie();
   popolaSelectCategorie();
   await renderListaDocumenti();
