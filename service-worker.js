@@ -1,18 +1,14 @@
-// ============================================================
-// SERVICE WORKER - cache solo dello "shell" statico dell'app.
-// I dati (Firestore/Storage) restano gestiti dagli SDK Firebase,
-// che hanno già la propria persistenza offline.
-// ============================================================
-
-const CACHE_NAME = "archivio-famiglia-v1";
+const CACHE_NAME = "archivio-famiglia-v3";
 
 const SHELL_FILES = [
   "./index.html",
+  "./agenda.html",
   "./css/style.css",
   "./js/firebase-config.js",
   "./js/auth.js",
   "./js/documenti.js",
   "./js/app.js",
+  "./js/agenda.js",
   "./manifest.json",
 ];
 
@@ -39,8 +35,6 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // Non intercettare mai chiamate a Firebase/Google APIs: devono
-  // passare sempre dalla rete (o gestite dalla persistenza SDK).
   if (
     url.hostname.includes("firebaseio.com") ||
     url.hostname.includes("googleapis.com") ||
