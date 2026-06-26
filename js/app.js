@@ -5,7 +5,28 @@
 let categorieCache = [];
 let filtriAttivi = {};
 
-document.addEventListener("DOMContentLoaded", () => {
+function inizListeners() {
+  document.getElementById("form-login").addEventListener("submit", gestisciLogin);
+  document.getElementById("btn-logout").addEventListener("click", () => logout());
+  document.getElementById("btn-cambia-password").addEventListener("click", apriModaleCambiaPassword);
+  document.getElementById("btn-password-dimenticata").addEventListener("click", gestisciPasswordDimenticata);
+  document.getElementById("fab-carica").addEventListener("click", apriModaleCarica);
+  document.getElementById("btn-chiudi-modale").addEventListener("click", chiudiModale);
+  document.getElementById("form-carica").addEventListener("submit", gestisciCaricaDocumento);
+  document.getElementById("input-ricerca").addEventListener("input", debounce(applicaFiltri, 300));
+  document.getElementById("select-categoria-filtro").addEventListener("change", applicaFiltri);
+  document.getElementById("select-anno-filtro").addEventListener("change", applicaFiltri);
+  document.getElementById("fab-aggiungi").addEventListener("click", apriModaleNuovoAppuntamento);
+  document.getElementById("btn-chiudi-modale-app").addEventListener("click", chiudiModaleAppuntamento);
+  document.getElementById("form-appuntamento").addEventListener("submit", gestisciSalvaAppuntamento);
+
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => cambiaTab(btn.dataset.tab));
+  });
+}
+
+window.addEventListener("load", () => {
+  inizListeners();
   onAuthChange(async (user, erroreMsg) => {
     if (erroreMsg) {
       mostraErroreLogin(erroreMsg);
@@ -18,22 +39,6 @@ document.addEventListener("DOMContentLoaded", () => {
       mostraLogin();
     }
   });
-
-  document.getElementById("form-login").addEventListener("submit", gestisciLogin);
-  document.getElementById("btn-logout").addEventListener("click", () => logout());
-  document.getElementById("btn-cambia-password").addEventListener("click", apriModaleCambiaPassword);
-  document.getElementById("btn-password-dimenticata").addEventListener("click", gestisciPasswordDimenticata);
-  document.getElementById("fab-carica").addEventListener("click", apriModaleCarica);
-  document.getElementById("btn-chiudi-modale").addEventListener("click", chiudiModale);
-  document.getElementById("form-carica").addEventListener("submit", gestisciCaricaDocumento);
-  document.getElementById("input-ricerca").addEventListener("input", debounce(applicaFiltri, 300));
-  document.getElementById("select-categoria-filtro").addEventListener("change", applicaFiltri);
-  document.getElementById("select-anno-filtro").addEventListener("change", applicaFiltri);
-
-  // Navigazione tab
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => cambiaTab(btn.dataset.tab));
-  });
 });
 
 function cambiaTab(nomeTab) {
@@ -41,10 +46,7 @@ function cambiaTab(nomeTab) {
   document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("attivo"));
   document.querySelector(`.tab-btn[data-tab="${nomeTab}"]`).classList.add("attivo");
   document.getElementById(`tab-${nomeTab}`).classList.add("attivo");
-
-  if (nomeTab === "agenda") {
-    renderListaAppuntamenti();
-  }
+  if (nomeTab === "agenda") renderListaAppuntamenti();
 }
 
 function mostraLogin() {
@@ -143,7 +145,7 @@ async function renderListaDocumenti() {
     const inScadenza = tuttiDocumenti.filter(
       (d) => statoScadenza(d) === "scaduto" || statoScadenza(d) === "in_scadenza"
     );
-    renderBannerScadenze(inScadenza, tuttiDocumenti);
+    renderBannerScadenze(inScadenza);
 
     if (tuttiDocumenti.length === 0) {
       container.innerHTML = '<div class="stato-vuoto">Nessun documento trovato.</div>';
@@ -160,7 +162,7 @@ async function renderListaDocumenti() {
   }
 }
 
-function renderBannerScadenze(documentiAllerta, tuttiDocumenti) {
+function renderBannerScadenze(documentiAllerta) {
   const bannerEl = document.getElementById("banner-scadenze");
   if (!bannerEl) return;
 
@@ -171,11 +173,11 @@ function renderBannerScadenze(documentiAllerta, tuttiDocumenti) {
   }
 
   const scaduti = documentiAllerta.filter((d) => statoScadenza(d) === "scaduto");
-  const inScadenza = documentiAllerta.filter((d) => statoScadenza(d) === "in_scadenza");
+  const inScad = documentiAllerta.filter((d) => statoScadenza(d) === "in_scadenza");
 
   let testo = "";
-  if (scaduti.length > 0) testo += `🔴 ${scaduti.length} document${scaduti.length > 1 ? "i scaduti" : "o scaduto"}`;
-  if (inScadenza.length > 0) { if (testo) testo += " · "; testo += `🟡 ${inScadenza.length} in scadenza`; }
+  if (scaduti.length > 0) testo += `🔴 ${scaduti.length} scadut${scaduti.length > 1 ? "i" : "o"}`;
+  if (inScad.length > 0) { if (testo) testo += " · "; testo += `🟡 ${inScad.length} in scadenza`; }
 
   bannerEl.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
@@ -310,7 +312,7 @@ async function apriDettaglioDocumento(docId, documentiCache) {
         <div class="icona-categoria" style="width:34px; height:34px; font-size:1rem;">📄</div>
         <div class="info"><div class="titolo" style="font-size:0.9rem;">${escapeHtml(a.nomeFile)}</div></div>
       </div>
-      ${puoModificare ? `<button class="btn btn-pericolo" style="padding:8px 12px; flex-shrink:0;" data-elimina-allegato-idx="${idx}" title="Elimina questo allegato">🗑️</button>` : ""}
+      ${puoModificare ? `<button class="btn btn-pericolo" style="padding:8px 12px; flex-shrink:0;" data-elimina-allegato-idx="${idx}">🗑️</button>` : ""}
     </div>
   `).join("");
 
@@ -334,7 +336,6 @@ async function apriDettaglioDocumento(docId, documentiCache) {
       </div>
     </div>
   `;
-
   document.body.insertAdjacentHTML("beforeend", html);
 
   document.querySelectorAll("#lista-allegati-dettaglio [data-allegato-idx]").forEach((el) => {
@@ -370,7 +371,7 @@ async function apriDettaglioDocumento(docId, documentiCache) {
           delete doc.storageRef;
           apriDettaglioDocumento(doc.id, [doc]);
         }
-      } catch (err) { alert("Errore durante l'eliminazione: " + err.message); }
+      } catch (err) { alert("Errore: " + err.message); }
     });
   });
 
@@ -381,13 +382,13 @@ async function apriDettaglioDocumento(docId, documentiCache) {
   const btnElimina = document.getElementById("btn-elimina-doc");
   if (btnElimina) {
     btnElimina.addEventListener("click", async () => {
-      const conferma = allegati.length > 1 ? `Eliminare definitivamente "${doc.titolo}" e tutti i suoi ${allegati.length} allegati?` : `Eliminare definitivamente "${doc.titolo}"?`;
+      const conferma = allegati.length > 1 ? `Eliminare "${doc.titolo}" e tutti i suoi ${allegati.length} allegati?` : `Eliminare definitivamente "${doc.titolo}"?`;
       if (!confirm(conferma)) return;
       try {
         await eliminaDocumento(doc.id, doc);
         document.getElementById("overlay-dettaglio").remove();
         await renderListaDocumenti();
-      } catch (err) { alert("Errore durante l'eliminazione: " + err.message); }
+      } catch (err) { alert("Errore: " + err.message); }
     });
   }
 
@@ -419,8 +420,7 @@ async function apriDettaglioDocumento(docId, documentiCache) {
         await renderListaDocumenti();
         apriDettaglioDocumento(doc.id, [doc]);
       } catch (err) {
-        console.error(err);
-        alert("Errore durante il caricamento dell'allegato: " + err.message);
+        alert("Errore: " + err.message);
         btnAggiungiAllegato.disabled = false;
         btnAggiungiAllegato.textContent = "+ Aggiungi allegato";
         progressoEl.classList.add("nascosto");
@@ -441,22 +441,21 @@ function apriModaleModifica(doc) {
       <div class="modale">
         <h2>Modifica documento</h2>
         <form id="form-modifica">
-          <div class="campo"><label for="modifica-titolo">Titolo</label><input type="text" id="modifica-titolo" required value="${escapeHtml(doc.titolo)}" /></div>
-          <div class="campo"><label for="modifica-categoria">Categoria</label><select id="modifica-categoria" required>${opzioniCategorie}</select></div>
-          <div class="campo"><label for="modifica-intestatario">Intestatario</label><input type="text" id="modifica-intestatario" value="${escapeHtml(doc.intestatario || "")}" /></div>
-          <div class="campo"><label for="modifica-data">Data documento</label><input type="date" id="modifica-data" value="${dataValue}" /></div>
-          <div class="campo"><label for="modifica-scadenza">Data scadenza (opzionale)</label><input type="date" id="modifica-scadenza" value="${dataScadValue}" /></div>
-          <div class="campo"><label for="modifica-preavviso">Avvisa con anticipo di</label><select id="modifica-preavviso">${opzioniPreavviso}</select></div>
-          <div class="campo"><label for="modifica-tag">Tag (separati da virgola)</label><input type="text" id="modifica-tag" value="${escapeHtml((doc.tag || []).join(", "))}" /></div>
+          <div class="campo"><label>Titolo</label><input type="text" id="modifica-titolo" required value="${escapeHtml(doc.titolo)}" /></div>
+          <div class="campo"><label>Categoria</label><select id="modifica-categoria" required>${opzioniCategorie}</select></div>
+          <div class="campo"><label>Intestatario</label><input type="text" id="modifica-intestatario" value="${escapeHtml(doc.intestatario || "")}" /></div>
+          <div class="campo"><label>Data documento</label><input type="date" id="modifica-data" value="${dataValue}" /></div>
+          <div class="campo"><label>Data scadenza</label><input type="date" id="modifica-scadenza" value="${dataScadValue}" /></div>
+          <div class="campo"><label>Avvisa con anticipo di</label><select id="modifica-preavviso">${opzioniPreavviso}</select></div>
+          <div class="campo"><label>Tag (separati da virgola)</label><input type="text" id="modifica-tag" value="${escapeHtml((doc.tag || []).join(", "))}" /></div>
           <div class="modale-azioni">
             <button type="button" class="btn btn-secondario" id="btn-annulla-modifica">Annulla</button>
-            <button type="submit" class="btn btn-accento" id="btn-salva-modifica">Salva modifiche</button>
+            <button type="submit" class="btn btn-accento" id="btn-salva-modifica">Salva</button>
           </div>
         </form>
       </div>
     </div>
   `;
-
   document.body.insertAdjacentHTML("beforeend", html);
   document.getElementById("btn-annulla-modifica").addEventListener("click", () => document.getElementById("overlay-modifica").remove());
   document.getElementById("form-modifica").addEventListener("submit", async (e) => {
@@ -479,15 +478,12 @@ function apriModaleModifica(doc) {
       document.getElementById("overlay-modifica").remove();
       await renderListaDocumenti();
     } catch (err) {
-      console.error(err);
-      alert("Errore durante il salvataggio: " + err.message);
+      alert("Errore: " + err.message);
       btnSalva.disabled = false;
-      btnSalva.textContent = "Salva modifiche";
+      btnSalva.textContent = "Salva";
     }
   });
 }
-
-// ---------- Password dimenticata ----------
 
 async function gestisciPasswordDimenticata() {
   const email = document.getElementById("login-email").value.trim();
@@ -502,7 +498,7 @@ async function gestisciPasswordDimenticata() {
     await inviaResetPassword(email);
     msgEl.style.display = "block";
     msgEl.style.color = "var(--colore-successo)";
-    msgEl.textContent = "✓ Email di reset inviata a " + email + ". Controlla la casella (anche spam).";
+    msgEl.textContent = "✓ Email di reset inviata. Controlla la casella (anche spam).";
   } catch (err) {
     msgEl.style.display = "block";
     msgEl.style.color = "var(--colore-errore)";
@@ -510,20 +506,18 @@ async function gestisciPasswordDimenticata() {
   }
 }
 
-// ---------- Cambia password (utente loggato) ----------
-
 function apriModaleCambiaPassword() {
   const html = `
     <div class="overlay" id="overlay-cambia-password">
       <div class="modale">
         <h2>Cambia password</h2>
         <form id="form-cambia-password">
-          <div class="campo"><label for="nuova-password">Nuova password</label><input type="password" id="nuova-password" required minlength="8" placeholder="Almeno 8 caratteri" /></div>
-          <div class="campo"><label for="conferma-password">Conferma password</label><input type="password" id="conferma-password" required minlength="8" placeholder="Ripeti la nuova password" /></div>
+          <div class="campo"><label>Nuova password</label><input type="password" id="nuova-password" required minlength="8" placeholder="Almeno 8 caratteri" /></div>
+          <div class="campo"><label>Conferma password</label><input type="password" id="conferma-password" required minlength="8" /></div>
           <div class="errore-msg" id="cambia-password-errore"></div>
           <div class="modale-azioni" style="margin-top:16px">
             <button type="button" class="btn btn-secondario" id="btn-annulla-cambia-password">Annulla</button>
-            <button type="submit" class="btn btn-primario" id="btn-salva-nuova-password">Salva</button>
+            <button type="submit" class="btn btn-primario">Salva</button>
           </div>
         </form>
       </div>
@@ -536,25 +530,15 @@ function apriModaleCambiaPassword() {
     const nuova = document.getElementById("nuova-password").value;
     const conferma = document.getElementById("conferma-password").value;
     const erroreEl = document.getElementById("cambia-password-errore");
-    const btnSalva = document.getElementById("btn-salva-nuova-password");
     erroreEl.textContent = "";
     if (nuova !== conferma) { erroreEl.textContent = "Le due password non coincidono."; return; }
-    if (nuova.length < 8) { erroreEl.textContent = "La password deve essere di almeno 8 caratteri."; return; }
-    btnSalva.disabled = true;
-    btnSalva.textContent = "Salvataggio...";
     try {
       await cambiaPassword(nuova);
       document.getElementById("overlay-cambia-password").remove();
       alert("✓ Password cambiata con successo.");
-    } catch (err) {
-      erroreEl.textContent = err;
-      btnSalva.disabled = false;
-      btnSalva.textContent = "Salva";
-    }
+    } catch (err) { erroreEl.textContent = err; }
   });
 }
-
-// ---------- Utility ----------
 
 function escapeHtml(str) {
   if (!str) return "";
