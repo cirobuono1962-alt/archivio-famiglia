@@ -1,5 +1,5 @@
 // ============================================================
-// APP.JS - Logica UI e orchestrazione viste
+// APP.JS - Logica UI, archivio e navigazione tab
 // ============================================================
 
 let categorieCache = [];
@@ -21,15 +21,31 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("form-login").addEventListener("submit", gestisciLogin);
   document.getElementById("btn-logout").addEventListener("click", () => logout());
-  document.getElementById("btn-password-dimenticata").addEventListener("click", gestisciPasswordDimenticata);
   document.getElementById("btn-cambia-password").addEventListener("click", apriModaleCambiaPassword);
+  document.getElementById("btn-password-dimenticata").addEventListener("click", gestisciPasswordDimenticata);
   document.getElementById("fab-carica").addEventListener("click", apriModaleCarica);
   document.getElementById("btn-chiudi-modale").addEventListener("click", chiudiModale);
   document.getElementById("form-carica").addEventListener("submit", gestisciCaricaDocumento);
   document.getElementById("input-ricerca").addEventListener("input", debounce(applicaFiltri, 300));
   document.getElementById("select-categoria-filtro").addEventListener("change", applicaFiltri);
   document.getElementById("select-anno-filtro").addEventListener("change", applicaFiltri);
+
+  // Navigazione tab
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => cambiaTab(btn.dataset.tab));
+  });
 });
+
+function cambiaTab(nomeTab) {
+  document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("attivo"));
+  document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("attivo"));
+  document.querySelector(`.tab-btn[data-tab="${nomeTab}"]`).classList.add("attivo");
+  document.getElementById(`tab-${nomeTab}`).classList.add("attivo");
+
+  if (nomeTab === "agenda") {
+    renderListaAppuntamenti();
+  }
+}
 
 function mostraLogin() {
   document.getElementById("vista-login").classList.remove("nascosto");
@@ -70,6 +86,7 @@ function mostraErroreLogin(msg) {
 async function inizializzaApp() {
   document.getElementById("nome-utente").textContent = currentUserData?.nome || currentUser.email;
   document.getElementById("fab-carica").classList.toggle("nascosto", !puoScrivere());
+  document.getElementById("fab-aggiungi").classList.toggle("nascosto", !puoScrivere());
   categorieCache = await caricaCategorie();
   popolaSelectCategorie();
   await renderListaDocumenti();
@@ -96,14 +113,10 @@ function popolaSelectCategorie() {
 function popolaSelectAnni(documenti) {
   const select = document.getElementById("select-anno-filtro");
   const annoAttuale = select.value;
-
   const anni = new Set();
   documenti.forEach((doc) => {
-    if (doc.dataDocumento) {
-      anni.add(new Date(doc.dataDocumento.seconds * 1000).getFullYear());
-    }
+    if (doc.dataDocumento) anni.add(new Date(doc.dataDocumento.seconds * 1000).getFullYear());
   });
-
   const anniOrdinati = [...anni].sort((a, b) => b - a);
   select.innerHTML = '<option value="">Tutti gli anni</option>';
   anniOrdinati.forEach((anno) => {
@@ -127,8 +140,6 @@ async function renderListaDocumenti() {
   try {
     const tuttiDocumenti = await cercaDocumenti({ ...filtriAttivi });
     popolaSelectAnni(await cercaDocumenti({}));
-
-    // Banner scadenze
     const inScadenza = tuttiDocumenti.filter(
       (d) => statoScadenza(d) === "scaduto" || statoScadenza(d) === "in_scadenza"
     );
@@ -140,7 +151,6 @@ async function renderListaDocumenti() {
     }
 
     container.innerHTML = tuttiDocumenti.map(renderCardDocumento).join("");
-
     container.querySelectorAll(".card-documento").forEach((card) => {
       card.addEventListener("click", () => apriDettaglioDocumento(card.dataset.id, tuttiDocumenti));
     });
@@ -165,31 +175,22 @@ function renderBannerScadenze(documentiAllerta, tuttiDocumenti) {
 
   let testo = "";
   if (scaduti.length > 0) testo += `🔴 ${scaduti.length} document${scaduti.length > 1 ? "i scaduti" : "o scaduto"}`;
-  if (inScadenza.length > 0) {
-    if (testo) testo += " · ";
-    testo += `🟡 ${inScadenza.length} in scadenza`;
-  }
+  if (inScadenza.length > 0) { if (testo) testo += " · "; testo += `🟡 ${inScadenza.length} in scadenza`; }
 
   bannerEl.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
       <span style="font-size:0.9rem; font-weight:600;">${testo}</span>
-      <button id="btn-filtro-scadenze" class="btn btn-secondario" style="padding:6px 12px; font-size:0.8rem;">
-        Mostra solo questi
-      </button>
+      <button id="btn-filtro-scadenze" class="btn btn-secondario" style="padding:6px 12px; font-size:0.8rem;">Mostra solo questi</button>
     </div>
     <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px;">
       ${documentiAllerta.slice(0, 3).map((d) => {
-        const dataStr = d.dataScadenza
-          ? new Date(d.dataScadenza.seconds * 1000).toLocaleDateString("it-IT")
-          : "—";
-        const stato = statoScadenza(d);
-        const icona = stato === "scaduto" ? "🔴" : "🟡";
+        const dataStr = d.dataScadenza ? new Date(d.dataScadenza.seconds * 1000).toLocaleDateString("it-IT") : "—";
+        const icona = statoScadenza(d) === "scaduto" ? "🔴" : "🟡";
         return `<span style="font-size:0.85rem;">${icona} ${escapeHtml(d.titolo)} — scade il ${dataStr}</span>`;
       }).join("")}
       ${documentiAllerta.length > 3 ? `<span style="font-size:0.8rem; color:var(--colore-testo-secondario);">e altri ${documentiAllerta.length - 3}...</span>` : ""}
     </div>
   `;
-
   bannerEl.classList.remove("nascosto");
 
   document.getElementById("btn-filtro-scadenze").addEventListener("click", async () => {
@@ -203,13 +204,10 @@ function renderBannerScadenze(documentiAllerta, tuttiDocumenti) {
 }
 
 function renderCardDocumento(doc) {
-  const dataStr = doc.dataDocumento
-    ? new Date(doc.dataDocumento.seconds * 1000).toLocaleDateString("it-IT")
-    : "—";
+  const dataStr = doc.dataDocumento ? new Date(doc.dataDocumento.seconds * 1000).toLocaleDateString("it-IT") : "—";
   const tagHtml = (doc.tag || []).map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("");
   const numAllegati = ottieniAllegati(doc).length;
   const badgeAllegati = numAllegati > 1 ? `<span class="tag-pill">📎 ${numAllegati} allegati</span>` : "";
-
   const stato = statoScadenza(doc);
   let badgeScadenza = "";
   if (stato === "scaduto") badgeScadenza = `<span class="tag-pill" style="background:#fdecea; border-color:#e57373; color:#c62828;">🔴 Scaduto</span>`;
@@ -217,7 +215,6 @@ function renderCardDocumento(doc) {
     const dataScad = new Date(doc.dataScadenza.seconds * 1000).toLocaleDateString("it-IT");
     badgeScadenza = `<span class="tag-pill" style="background:#fff8e1; border-color:#ffb300; color:#e65100;">🟡 Scade il ${dataScad}</span>`;
   }
-
   return `
     <div class="card-documento" data-id="${doc.id}">
       <div class="icona-categoria">${iniziale(doc.categoria)}</div>
@@ -257,7 +254,6 @@ document.addEventListener("change", (e) => {
 
 async function gestisciCaricaDocumento(e) {
   e.preventDefault();
-
   const files = document.getElementById("upload-file").files;
   if (!files || files.length === 0) return;
 
@@ -272,15 +268,11 @@ async function gestisciCaricaDocumento(e) {
     visibilita: "famiglia",
   };
 
-  if (!meta.categoria || meta.categoria === "__nuova__") {
-    alert("Seleziona una categoria valida.");
-    return;
-  }
+  if (!meta.categoria || meta.categoria === "__nuova__") { alert("Seleziona una categoria valida."); return; }
 
   const progressoEl = document.getElementById("upload-progresso");
   const fillEl = document.getElementById("upload-progresso-fill");
   const btnSubmit = document.getElementById("btn-upload-submit");
-
   progressoEl.classList.remove("nascosto");
   btnSubmit.disabled = true;
 
@@ -300,14 +292,8 @@ async function apriDettaglioDocumento(docId, documentiCache) {
   const doc = documentiCache.find((d) => d.id === docId);
   if (!doc) return;
 
-  const dataStr = doc.dataDocumento
-    ? new Date(doc.dataDocumento.seconds * 1000).toLocaleDateString("it-IT")
-    : "—";
-
-  const dataScadStr = doc.dataScadenza
-    ? new Date(doc.dataScadenza.seconds * 1000).toLocaleDateString("it-IT")
-    : null;
-
+  const dataStr = doc.dataDocumento ? new Date(doc.dataDocumento.seconds * 1000).toLocaleDateString("it-IT") : "—";
+  const dataScadStr = doc.dataScadenza ? new Date(doc.dataScadenza.seconds * 1000).toLocaleDateString("it-IT") : null;
   const stato = statoScadenza(doc);
   let scadenzaHtml = "";
   if (dataScadStr) {
@@ -318,14 +304,11 @@ async function apriDettaglioDocumento(docId, documentiCache) {
 
   const puoModificare = puoScrivere();
   const allegati = ottieniAllegati(doc);
-
   const allegatiHtml = allegati.map((a, idx) => `
     <div style="display:flex; align-items:center; gap:8px;">
       <div class="card-documento" style="cursor:pointer; padding:10px 14px; flex:1;" data-allegato-idx="${idx}">
         <div class="icona-categoria" style="width:34px; height:34px; font-size:1rem;">📄</div>
-        <div class="info">
-          <div class="titolo" style="font-size:0.9rem;">${escapeHtml(a.nomeFile)}</div>
-        </div>
+        <div class="info"><div class="titolo" style="font-size:0.9rem;">${escapeHtml(a.nomeFile)}</div></div>
       </div>
       ${puoModificare ? `<button class="btn btn-pericolo" style="padding:8px 12px; flex-shrink:0;" data-elimina-allegato-idx="${idx}" title="Elimina questo allegato">🗑️</button>` : ""}
     </div>
@@ -335,19 +318,11 @@ async function apriDettaglioDocumento(docId, documentiCache) {
     <div class="overlay" id="overlay-dettaglio">
       <div class="modale">
         <h2>${escapeHtml(doc.titolo)}</h2>
-        <p style="color:var(--colore-testo-secondario); margin-bottom:4px;">
-          ${escapeHtml(doc.categoria)} · ${escapeHtml(doc.intestatario || "—")} · ${dataStr}
-        </p>
+        <p style="color:var(--colore-testo-secondario); margin-bottom:4px;">${escapeHtml(doc.categoria)} · ${escapeHtml(doc.intestatario || "—")} · ${dataStr}</p>
         ${scadenzaHtml}
-        <div style="margin:8px 0 12px">
-          ${(doc.tag || []).map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}
-        </div>
-        <p style="font-size:0.85rem; font-weight:600; color:var(--colore-testo-secondario); margin-bottom:8px;">
-          ${allegati.length === 1 ? "Allegato" : `Allegati (${allegati.length})`}
-        </p>
-        <div id="lista-allegati-dettaglio" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
-          ${allegatiHtml}
-        </div>
+        <div style="margin:8px 0 12px">${(doc.tag || []).map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}</div>
+        <p style="font-size:0.85rem; font-weight:600; color:var(--colore-testo-secondario); margin-bottom:8px;">${allegati.length === 1 ? "Allegato" : `Allegati (${allegati.length})`}</p>
+        <div id="lista-allegati-dettaglio" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">${allegatiHtml}</div>
         ${puoModificare ? '<button class="btn btn-secondario btn-blocco" id="btn-aggiungi-allegato" style="margin-bottom:10px">+ Aggiungi allegato</button>' : ""}
         ${puoModificare ? '<button class="btn btn-secondario btn-blocco" id="btn-modifica-doc" style="margin-bottom:10px">Modifica</button>' : ""}
         ${puoModificare ? '<button class="btn btn-pericolo btn-blocco" id="btn-elimina-doc" style="margin-bottom:10px">Elimina</button>' : ""}
@@ -380,10 +355,9 @@ async function apriDettaglioDocumento(docId, documentiCache) {
     });
   });
 
-  // Click sui pulsanti elimina singolo allegato
   document.querySelectorAll("#lista-allegati-dettaglio [data-elimina-allegato-idx]").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
-      e.stopPropagation(); // evita che il click apra anche il download
+      e.stopPropagation();
       const idx = parseInt(btn.dataset.eliminaAllegatoIdx, 10);
       const nomeFile = allegati[idx]?.nomeFile || "questo allegato";
       if (!confirm(`Eliminare definitivamente "${nomeFile}"?`)) return;
@@ -392,14 +366,11 @@ async function apriDettaglioDocumento(docId, documentiCache) {
         document.getElementById("overlay-dettaglio").remove();
         await renderListaDocumenti();
         if (allegatiAggiornati !== null) {
-          // Documento ancora esistente con altri allegati: riapri il dettaglio aggiornato
           doc.allegati = allegatiAggiornati;
           delete doc.storageRef;
           apriDettaglioDocumento(doc.id, [doc]);
         }
-      } catch (err) {
-        alert("Errore durante l'eliminazione: " + err.message);
-      }
+      } catch (err) { alert("Errore durante l'eliminazione: " + err.message); }
     });
   });
 
@@ -410,17 +381,13 @@ async function apriDettaglioDocumento(docId, documentiCache) {
   const btnElimina = document.getElementById("btn-elimina-doc");
   if (btnElimina) {
     btnElimina.addEventListener("click", async () => {
-      const conferma = allegati.length > 1
-        ? `Eliminare definitivamente "${doc.titolo}" e tutti i suoi ${allegati.length} allegati?`
-        : `Eliminare definitivamente "${doc.titolo}"?`;
+      const conferma = allegati.length > 1 ? `Eliminare definitivamente "${doc.titolo}" e tutti i suoi ${allegati.length} allegati?` : `Eliminare definitivamente "${doc.titolo}"?`;
       if (!confirm(conferma)) return;
       try {
         await eliminaDocumento(doc.id, doc);
         document.getElementById("overlay-dettaglio").remove();
         await renderListaDocumenti();
-      } catch (err) {
-        alert("Errore durante l'eliminazione: " + err.message);
-      }
+      } catch (err) { alert("Errore durante l'eliminazione: " + err.message); }
     });
   }
 
@@ -445,9 +412,7 @@ async function apriDettaglioDocumento(docId, documentiCache) {
       btnAggiungiAllegato.textContent = "Caricamento...";
       progressoEl.classList.remove("nascosto");
       try {
-        const allegatiAggiornati = await aggiungiAllegati(doc.id, doc, nuoviFile, (pct) => {
-          fillEl.style.width = `${pct}%`;
-        });
+        const allegatiAggiornati = await aggiungiAllegati(doc.id, doc, nuoviFile, (pct) => { fillEl.style.width = `${pct}%`; });
         doc.allegati = allegatiAggiornati;
         delete doc.storageRef;
         document.getElementById("overlay-dettaglio").remove();
@@ -465,55 +430,24 @@ async function apriDettaglioDocumento(docId, documentiCache) {
 }
 
 function apriModaleModifica(doc) {
-  const dataValue = doc.dataDocumento
-    ? new Date(doc.dataDocumento.seconds * 1000).toISOString().split("T")[0]
-    : "";
-  const dataScadValue = doc.dataScadenza
-    ? new Date(doc.dataScadenza.seconds * 1000).toISOString().split("T")[0]
-    : "";
+  const dataValue = doc.dataDocumento ? new Date(doc.dataDocumento.seconds * 1000).toISOString().split("T")[0] : "";
+  const dataScadValue = doc.dataScadenza ? new Date(doc.dataScadenza.seconds * 1000).toISOString().split("T")[0] : "";
   const giorniPreavviso = doc.giorniPreavviso || 30;
-
-  const opzioniCategorie = categorieCache
-    .map((c) => `<option value="${escapeHtml(c.nome)}" ${c.nome === doc.categoria ? "selected" : ""}>${escapeHtml(c.nome)}</option>`)
-    .join("");
-
-  const opzioniPreavviso = [7, 15, 30, 60, 90].map((g) =>
-    `<option value="${g}" ${g === giorniPreavviso ? "selected" : ""}>${g} giorni prima</option>`
-  ).join("");
+  const opzioniCategorie = categorieCache.map((c) => `<option value="${escapeHtml(c.nome)}" ${c.nome === doc.categoria ? "selected" : ""}>${escapeHtml(c.nome)}</option>`).join("");
+  const opzioniPreavviso = [7, 15, 30, 60, 90].map((g) => `<option value="${g}" ${g === giorniPreavviso ? "selected" : ""}>${g} giorni prima</option>`).join("");
 
   const html = `
     <div class="overlay" id="overlay-modifica">
       <div class="modale">
         <h2>Modifica documento</h2>
         <form id="form-modifica">
-          <div class="campo">
-            <label for="modifica-titolo">Titolo</label>
-            <input type="text" id="modifica-titolo" required value="${escapeHtml(doc.titolo)}" />
-          </div>
-          <div class="campo">
-            <label for="modifica-categoria">Categoria</label>
-            <select id="modifica-categoria" required>${opzioniCategorie}</select>
-          </div>
-          <div class="campo">
-            <label for="modifica-intestatario">Intestatario</label>
-            <input type="text" id="modifica-intestatario" value="${escapeHtml(doc.intestatario || "")}" />
-          </div>
-          <div class="campo">
-            <label for="modifica-data">Data documento</label>
-            <input type="date" id="modifica-data" value="${dataValue}" />
-          </div>
-          <div class="campo">
-            <label for="modifica-scadenza">Data scadenza (opzionale)</label>
-            <input type="date" id="modifica-scadenza" value="${dataScadValue}" />
-          </div>
-          <div class="campo">
-            <label for="modifica-preavviso">Avvisa con anticipo di</label>
-            <select id="modifica-preavviso">${opzioniPreavviso}</select>
-          </div>
-          <div class="campo">
-            <label for="modifica-tag">Tag (separati da virgola)</label>
-            <input type="text" id="modifica-tag" value="${escapeHtml((doc.tag || []).join(", "))}" />
-          </div>
+          <div class="campo"><label for="modifica-titolo">Titolo</label><input type="text" id="modifica-titolo" required value="${escapeHtml(doc.titolo)}" /></div>
+          <div class="campo"><label for="modifica-categoria">Categoria</label><select id="modifica-categoria" required>${opzioniCategorie}</select></div>
+          <div class="campo"><label for="modifica-intestatario">Intestatario</label><input type="text" id="modifica-intestatario" value="${escapeHtml(doc.intestatario || "")}" /></div>
+          <div class="campo"><label for="modifica-data">Data documento</label><input type="date" id="modifica-data" value="${dataValue}" /></div>
+          <div class="campo"><label for="modifica-scadenza">Data scadenza (opzionale)</label><input type="date" id="modifica-scadenza" value="${dataScadValue}" /></div>
+          <div class="campo"><label for="modifica-preavviso">Avvisa con anticipo di</label><select id="modifica-preavviso">${opzioniPreavviso}</select></div>
+          <div class="campo"><label for="modifica-tag">Tag (separati da virgola)</label><input type="text" id="modifica-tag" value="${escapeHtml((doc.tag || []).join(", "))}" /></div>
           <div class="modale-azioni">
             <button type="button" class="btn btn-secondario" id="btn-annulla-modifica">Annulla</button>
             <button type="submit" class="btn btn-accento" id="btn-salva-modifica">Salva modifiche</button>
@@ -524,33 +458,22 @@ function apriModaleModifica(doc) {
   `;
 
   document.body.insertAdjacentHTML("beforeend", html);
-
-  document.getElementById("btn-annulla-modifica").addEventListener("click", () => {
-    document.getElementById("overlay-modifica").remove();
-  });
-
+  document.getElementById("btn-annulla-modifica").addEventListener("click", () => document.getElementById("overlay-modifica").remove());
   document.getElementById("form-modifica").addEventListener("submit", async (e) => {
     e.preventDefault();
-
     const dataScadenzaVal = document.getElementById("modifica-scadenza").value;
     const modifiche = {
       titolo: document.getElementById("modifica-titolo").value.trim(),
       categoria: document.getElementById("modifica-categoria").value,
       intestatario: document.getElementById("modifica-intestatario").value.trim(),
-      dataDocumento: document.getElementById("modifica-data").value
-        ? firebase.firestore.Timestamp.fromDate(new Date(document.getElementById("modifica-data").value))
-        : null,
-      dataScadenza: dataScadenzaVal
-        ? firebase.firestore.Timestamp.fromDate(new Date(dataScadenzaVal))
-        : null,
+      dataDocumento: document.getElementById("modifica-data").value ? firebase.firestore.Timestamp.fromDate(new Date(document.getElementById("modifica-data").value)) : null,
+      dataScadenza: dataScadenzaVal ? firebase.firestore.Timestamp.fromDate(new Date(dataScadenzaVal)) : null,
       giorniPreavviso: parseInt(document.getElementById("modifica-preavviso").value) || 30,
       tag: document.getElementById("modifica-tag").value.split(",").map((t) => t.trim()).filter(Boolean),
     };
-
     const btnSalva = document.getElementById("btn-salva-modifica");
     btnSalva.disabled = true;
     btnSalva.textContent = "Salvataggio...";
-
     try {
       await aggiornaDocumento(doc.id, modifiche);
       document.getElementById("overlay-modifica").remove();
@@ -569,14 +492,12 @@ function apriModaleModifica(doc) {
 async function gestisciPasswordDimenticata() {
   const email = document.getElementById("login-email").value.trim();
   const msgEl = document.getElementById("reset-messaggio");
-
   if (!email) {
     msgEl.style.display = "block";
     msgEl.style.color = "var(--colore-errore)";
     msgEl.textContent = "Inserisci la tua email nel campo qui sopra, poi clicca di nuovo.";
     return;
   }
-
   try {
     await inviaResetPassword(email);
     msgEl.style.display = "block";
@@ -597,14 +518,8 @@ function apriModaleCambiaPassword() {
       <div class="modale">
         <h2>Cambia password</h2>
         <form id="form-cambia-password">
-          <div class="campo">
-            <label for="nuova-password">Nuova password</label>
-            <input type="password" id="nuova-password" required minlength="8" placeholder="Almeno 8 caratteri" />
-          </div>
-          <div class="campo">
-            <label for="conferma-password">Conferma password</label>
-            <input type="password" id="conferma-password" required minlength="8" placeholder="Ripeti la nuova password" />
-          </div>
+          <div class="campo"><label for="nuova-password">Nuova password</label><input type="password" id="nuova-password" required minlength="8" placeholder="Almeno 8 caratteri" /></div>
+          <div class="campo"><label for="conferma-password">Conferma password</label><input type="password" id="conferma-password" required minlength="8" placeholder="Ripeti la nuova password" /></div>
           <div class="errore-msg" id="cambia-password-errore"></div>
           <div class="modale-azioni" style="margin-top:16px">
             <button type="button" class="btn btn-secondario" id="btn-annulla-cambia-password">Annulla</button>
@@ -614,35 +529,19 @@ function apriModaleCambiaPassword() {
       </div>
     </div>
   `;
-
   document.body.insertAdjacentHTML("beforeend", html);
-
-  document.getElementById("btn-annulla-cambia-password").addEventListener("click", () => {
-    document.getElementById("overlay-cambia-password").remove();
-  });
-
+  document.getElementById("btn-annulla-cambia-password").addEventListener("click", () => document.getElementById("overlay-cambia-password").remove());
   document.getElementById("form-cambia-password").addEventListener("submit", async (e) => {
     e.preventDefault();
     const nuova = document.getElementById("nuova-password").value;
     const conferma = document.getElementById("conferma-password").value;
     const erroreEl = document.getElementById("cambia-password-errore");
     const btnSalva = document.getElementById("btn-salva-nuova-password");
-
     erroreEl.textContent = "";
-
-    if (nuova !== conferma) {
-      erroreEl.textContent = "Le due password non coincidono.";
-      return;
-    }
-
-    if (nuova.length < 8) {
-      erroreEl.textContent = "La password deve essere di almeno 8 caratteri.";
-      return;
-    }
-
+    if (nuova !== conferma) { erroreEl.textContent = "Le due password non coincidono."; return; }
+    if (nuova.length < 8) { erroreEl.textContent = "La password deve essere di almeno 8 caratteri."; return; }
     btnSalva.disabled = true;
     btnSalva.textContent = "Salvataggio...";
-
     try {
       await cambiaPassword(nuova);
       document.getElementById("overlay-cambia-password").remove();
@@ -654,6 +553,8 @@ function apriModaleCambiaPassword() {
     }
   });
 }
+
+// ---------- Utility ----------
 
 function escapeHtml(str) {
   if (!str) return "";
