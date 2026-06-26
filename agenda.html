@@ -3,15 +3,48 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Archivio Famiglia</title>
+  <title>Agenda — Archivio Famiglia</title>
   <meta name="theme-color" content="#2c5f6f" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .card-appuntamento {
+      background: var(--colore-superficie);
+      border-radius: var(--raggio);
+      box-shadow: var(--ombra);
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+    .card-appuntamento:active { transform: scale(0.99); }
+    .data-badge {
+      background: var(--colore-primario);
+      color: white;
+      border-radius: 8px;
+      padding: 6px 10px;
+      text-align: center;
+      min-width: 52px;
+      flex-shrink: 0;
+    }
+    .data-badge .giorno { font-size: 1.4rem; font-weight: 700; line-height: 1; }
+    .data-badge .mese { font-size: 0.7rem; text-transform: uppercase; }
+    .card-appuntamento.oggi .data-badge { background: var(--colore-accento); }
+    .card-appuntamento.passato { opacity: 0.55; }
+    .sezione-titolo {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--colore-testo-secondario);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 20px 0 8px;
+    }
+  </style>
 </head>
 <body>
 
-  <!-- ================= VISTA LOGIN ================= -->
   <div id="vista-login">
     <div class="login-box">
       <h2>Archivio Famiglia</h2>
@@ -26,98 +59,58 @@
         </div>
         <button type="submit" id="btn-login" class="btn btn-primario btn-blocco">Accedi</button>
         <div class="errore-msg" id="login-errore"></div>
-        <button type="button" id="btn-password-dimenticata" style="background:none; border:none; color:var(--colore-primario); font-size:0.85rem; cursor:pointer; margin-top:12px; text-decoration:underline;">Password dimenticata?</button>
-        <div id="reset-messaggio" style="font-size:0.85rem; margin-top:8px; display:none;"></div>
       </form>
     </div>
   </div>
 
-  <!-- ================= VISTA APP ================= -->
   <div id="vista-app" class="nascosto">
     <header class="app-header">
-      <h1>📁 Archivio Famiglia</h1>
+      <h1>📅 Agenda</h1>
       <div class="utente-info">
+        <a href="index.html" style="color:white; text-decoration:none; font-size:0.85rem;">← Archivio</a>
         <span id="nome-utente"></span>
-        <a href="agenda.html" class="btn btn-secondario" style="padding:6px 12px; font-size:0.8rem; text-decoration:none;">📅 Agenda</a>
-        <button id="btn-cambia-password" class="btn btn-secondario" style="padding:6px 12px; font-size:0.8rem;">🔑 Password</button>
         <button id="btn-logout" class="btn btn-secondario" style="padding:6px 12px; font-size:0.8rem;">Esci</button>
       </div>
     </header>
 
     <div class="container">
-      <div class="toolbar">
-        <input type="text" id="input-ricerca" placeholder="Cerca per titolo o tag..." />
-        <select id="select-categoria-filtro"></select>
-        <select id="select-anno-filtro"><option value="">Tutti gli anni</option></select>
-      </div>
-
-      <div id="banner-scadenze" class="nascosto" style="background:#fff8e1; border:1px solid #ffb300; border-radius:var(--raggio); padding:14px 16px; margin-bottom:16px;"></div>
-
-      <div id="lista-documenti" class="lista-documenti">
+      <div id="lista-appuntamenti" class="lista-documenti">
         <div class="stato-vuoto">Caricamento...</div>
       </div>
     </div>
 
-    <button id="fab-carica" class="fab nascosto" title="Carica documento">+</button>
+    <button id="fab-aggiungi" class="fab nascosto" title="Nuovo appuntamento">+</button>
   </div>
 
-  <!-- ================= MODALE CARICA DOCUMENTO ================= -->
-  <div id="modale-carica" class="overlay nascosto">
+  <!-- Modale nuovo/modifica appuntamento -->
+  <div id="modale-appuntamento" class="overlay nascosto">
     <div class="modale">
-      <h2>Carica documento</h2>
-      <form id="form-carica">
+      <h2 id="modale-titolo-appuntamento">Nuovo appuntamento</h2>
+      <form id="form-appuntamento">
         <div class="campo">
-          <label for="upload-titolo">Titolo</label>
-          <input type="text" id="upload-titolo" required placeholder="Es. Bolletta luce gennaio" />
-        </div>
-        <div class="campo">
-          <label for="upload-categoria">Categoria</label>
-          <select id="upload-categoria" required></select>
+          <label for="app-titolo">Titolo</label>
+          <input type="text" id="app-titolo" required placeholder="Es. Visita medico, Riunione commercialista..." />
         </div>
         <div class="campo">
-          <label for="upload-intestatario">Intestatario</label>
-          <input type="text" id="upload-intestatario" placeholder="Es. Ciro, Mamma, Casa..." />
+          <label for="app-data">Data</label>
+          <input type="date" id="app-data" required />
         </div>
         <div class="campo">
-          <label for="upload-data">Data documento</label>
-          <input type="date" id="upload-data" />
+          <label for="app-ora">Ora (opzionale)</label>
+          <input type="time" id="app-ora" />
         </div>
         <div class="campo">
-          <label for="upload-tag">Tag (separati da virgola)</label>
-          <input type="text" id="upload-tag" placeholder="Es. energia, 2026, urgente" />
+          <label for="app-descrizione">Note (opzionale)</label>
+          <textarea id="app-descrizione" rows="3" placeholder="Luogo, persone, dettagli..." style="resize:vertical;"></textarea>
         </div>
-        <div class="campo">
-          <label for="upload-scadenza">Data scadenza (opzionale)</label>
-          <input type="date" id="upload-scadenza" />
-        </div>
-        <div class="campo">
-          <label for="upload-preavviso">Avvisa con anticipo di</label>
-          <select id="upload-preavviso">
-            <option value="7">7 giorni prima</option>
-            <option value="15">15 giorni prima</option>
-            <option value="30" selected>30 giorni prima</option>
-            <option value="60">60 giorni prima</option>
-            <option value="90">90 giorni prima</option>
-          </select>
-        </div>
-        <div class="campo">
-          <label for="upload-file">File (puoi selezionarne più di uno)</label>
-          <input type="file" id="upload-file" required multiple accept=".pdf,.jpg,.jpeg,.png,.heic" />
-        </div>
-
-        <div id="upload-progresso" class="barra-progresso nascosto">
-          <div id="upload-progresso-fill" class="barra-progresso-fill" style="width:0%"></div>
-        </div>
-
         <div class="modale-azioni">
-          <button type="button" id="btn-chiudi-modale" class="btn btn-secondario">Annulla</button>
-          <button type="submit" id="btn-upload-submit" class="btn btn-accento">Carica</button>
+          <button type="button" class="btn btn-secondario" id="btn-chiudi-modale-app">Annulla</button>
+          <button type="submit" class="btn btn-accento" id="btn-salva-app">Salva</button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- Firebase SDK (compat, stesso pattern usato in MedSafe) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -125,17 +118,6 @@
 
   <script src="js/firebase-config.js"></script>
   <script src="js/auth.js"></script>
-  <script src="js/documenti.js"></script>
-  <script src="js/app.js"></script>
-
-  <script>
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("service-worker.js").catch((err) => {
-          console.warn("Service worker non registrato:", err);
-        });
-      });
-    }
-  </script>
+  <script src="js/agenda.js"></script>
 </body>
 </html>
