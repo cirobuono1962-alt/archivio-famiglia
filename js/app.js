@@ -1,22 +1,18 @@
 // ============================================================
-// APP.JS - Logica UI e orchestrazione viste
+// APP.JS - Archivio + Agenda (SPA unica, no file separati)
 // ============================================================
 
 let categorieCache = [];
 let filtriAttivi = {};
+const COLLECTION_APPUNTAMENTI = "appuntamenti";
+let appuntamentiCache = [];
+let appuntamentoInModifica = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   onAuthChange(async (user, erroreMsg) => {
-    if (erroreMsg) {
-      mostraErroreLogin(erroreMsg);
-      return;
-    }
-    if (user) {
-      mostraApp();
-      await inizializzaApp();
-    } else {
-      mostraLogin();
-    }
+    if (erroreMsg) { mostraErroreLogin(erroreMsg); return; }
+    if (user) { mostraApp(); await inizializzaApp(); }
+    else { mostraLogin(); }
   });
 
   document.getElementById("form-login").addEventListener("submit", gestisciLogin);
@@ -29,7 +25,26 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("input-ricerca").addEventListener("input", debounce(applicaFiltri, 300));
   document.getElementById("select-categoria-filtro").addEventListener("change", applicaFiltri);
   document.getElementById("select-anno-filtro").addEventListener("change", applicaFiltri);
+  document.getElementById("fab-aggiungi").addEventListener("click", apriModaleNuovoAppuntamento);
+  document.getElementById("btn-chiudi-modale-app").addEventListener("click", chiudiModaleAppuntamento);
+  document.getElementById("form-appuntamento").addEventListener("submit", gestisciSalvaAppuntamento);
+
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => cambiaTab(btn.dataset.tab));
+  });
 });
+
+// ---- Tab ----
+
+function cambiaTab(nomeTab) {
+  document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("attivo"));
+  document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("attivo"));
+  document.querySelector(`.tab-btn[data-tab="${nomeTab}"]`).classList.add("attivo");
+  document.getElementById(`tab-${nomeTab}`).classList.add("attivo");
+  if (nomeTab === "agenda") renderListaAppuntamenti();
+}
+
+// ---- Auth ----
 
 function mostraLogin() {
   document.getElementById("vista-login").classList.remove("nascosto");
@@ -47,11 +62,9 @@ async function gestisciLogin(e) {
   const password = document.getElementById("login-password").value;
   const btn = document.getElementById("btn-login");
   const erroreEl = document.getElementById("login-errore");
-
   erroreEl.textContent = "";
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Accesso...';
-
   try {
     await login(email, password);
   } catch (err) {
@@ -70,26 +83,24 @@ function mostraErroreLogin(msg) {
 async function inizializzaApp() {
   document.getElementById("nome-utente").textContent = currentUserData?.nome || currentUser.email;
   document.getElementById("fab-carica").classList.toggle("nascosto", !puoScrivere());
+  document.getElementById("fab-aggiungi").classList.toggle("nascosto", !puoScrivere());
   categorieCache = await caricaCategorie();
   popolaSelectCategorie();
   await renderListaDocumenti();
 }
 
+// ---- Archivio ----
+
 function popolaSelectCategorie() {
   const selectFiltro = document.getElementById("select-categoria-filtro");
   const selectUpload = document.getElementById("upload-categoria");
   const categorieDaMostrare = categorieVisibiliUtente() ?? categorieCache.map((c) => c.nome);
-
   selectFiltro.innerHTML = '<option value="">Tutte le categorie</option>';
   selectUpload.innerHTML = '<option value="">Seleziona categoria...</option>';
-
-  categorieCache
-    .filter((c) => categorieDaMostrare.includes(c.nome))
-    .forEach((c) => {
-      selectFiltro.innerHTML += `<option value="${escapeHtml(c.nome)}">${escapeHtml(c.nome)}</option>`;
-      selectUpload.innerHTML += `<option value="${escapeHtml(c.nome)}">${escapeHtml(c.nome)}</option>`;
-    });
-
+  categorieCache.filter((c) => categorieDaMostrare.includes(c.nome)).forEach((c) => {
+    selectFiltro.innerHTML += `<option value="${escapeHtml(c.nome)}">${escapeHtml(c.nome)}</option>`;
+    selectUpload.innerHTML += `<option value="${escapeHtml(c.nome)}">${escapeHtml(c.nome)}</option>`;
+  });
   selectUpload.innerHTML += `<option value="__nuova__">+ Nuova categoria...</option>`;
 }
 
@@ -97,12 +108,9 @@ function popolaSelectAnni(documenti) {
   const select = document.getElementById("select-anno-filtro");
   const annoAttuale = select.value;
   const anni = new Set();
-  documenti.forEach((doc) => {
-    if (doc.dataDocumento) anni.add(new Date(doc.dataDocumento.seconds * 1000).getFullYear());
-  });
-  const anniOrdinati = [...anni].sort((a, b) => b - a);
+  documenti.forEach((doc) => { if (doc.dataDocumento) anni.add(new Date(doc.dataDocumento.seconds * 1000).getFullYear()); });
   select.innerHTML = '<option value="">Tutti gli anni</option>';
-  anniOrdinati.forEach((anno) => {
+  [...anni].sort((a, b) => b - a).forEach((anno) => {
     select.innerHTML += `<option value="${anno}" ${anno == annoAttuale ? "selected" : ""}>${anno}</option>`;
   });
 }
@@ -119,20 +127,12 @@ function applicaFiltri() {
 async function renderListaDocumenti() {
   const container = document.getElementById("lista-documenti");
   container.innerHTML = '<div class="stato-vuoto">Caricamento...</div>';
-
   try {
     const tuttiDocumenti = await cercaDocumenti({ ...filtriAttivi });
     popolaSelectAnni(await cercaDocumenti({}));
-    const inScadenza = tuttiDocumenti.filter(
-      (d) => statoScadenza(d) === "scaduto" || statoScadenza(d) === "in_scadenza"
-    );
-    renderBannerScadenze(inScadenza);
-
-    if (tuttiDocumenti.length === 0) {
-      container.innerHTML = '<div class="stato-vuoto">Nessun documento trovato.</div>';
-      return;
-    }
-
+    const allerta = tuttiDocumenti.filter((d) => statoScadenza(d) === "scaduto" || statoScadenza(d) === "in_scadenza");
+    renderBannerScadenze(allerta);
+    if (tuttiDocumenti.length === 0) { container.innerHTML = '<div class="stato-vuoto">Nessun documento trovato.</div>'; return; }
     container.innerHTML = tuttiDocumenti.map(renderCardDocumento).join("");
     container.querySelectorAll(".card-documento").forEach((card) => {
       card.addEventListener("click", () => apriDettaglioDocumento(card.dataset.id, tuttiDocumenti));
@@ -146,20 +146,12 @@ async function renderListaDocumenti() {
 function renderBannerScadenze(documentiAllerta) {
   const bannerEl = document.getElementById("banner-scadenze");
   if (!bannerEl) return;
-
-  if (documentiAllerta.length === 0) {
-    bannerEl.classList.add("nascosto");
-    bannerEl.innerHTML = "";
-    return;
-  }
-
+  if (documentiAllerta.length === 0) { bannerEl.classList.add("nascosto"); bannerEl.innerHTML = ""; return; }
   const scaduti = documentiAllerta.filter((d) => statoScadenza(d) === "scaduto");
   const inScad = documentiAllerta.filter((d) => statoScadenza(d) === "in_scadenza");
-
   let testo = "";
   if (scaduti.length > 0) testo += `🔴 ${scaduti.length} scadut${scaduti.length > 1 ? "i" : "o"}`;
   if (inScad.length > 0) { if (testo) testo += " · "; testo += `🟡 ${inScad.length} in scadenza`; }
-
   bannerEl.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
       <span style="font-size:0.9rem; font-weight:600;">${testo}</span>
@@ -168,14 +160,12 @@ function renderBannerScadenze(documentiAllerta) {
     <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px;">
       ${documentiAllerta.slice(0, 3).map((d) => {
         const dataStr = d.dataScadenza ? new Date(d.dataScadenza.seconds * 1000).toLocaleDateString("it-IT") : "—";
-        const icona = statoScadenza(d) === "scaduto" ? "🔴" : "🟡";
-        return `<span style="font-size:0.85rem;">${icona} ${escapeHtml(d.titolo)} — scade il ${dataStr}</span>`;
+        return `<span style="font-size:0.85rem;">${statoScadenza(d) === "scaduto" ? "🔴" : "🟡"} ${escapeHtml(d.titolo)} — scade il ${dataStr}</span>`;
       }).join("")}
       ${documentiAllerta.length > 3 ? `<span style="font-size:0.8rem; color:var(--colore-testo-secondario);">e altri ${documentiAllerta.length - 3}...</span>` : ""}
     </div>
   `;
   bannerEl.classList.remove("nascosto");
-
   document.getElementById("btn-filtro-scadenze").addEventListener("click", async () => {
     const soloScadenze = await cercaDocumenti({ soloScadenze: true });
     const container = document.getElementById("lista-documenti");
@@ -210,9 +200,7 @@ function renderCardDocumento(doc) {
   `;
 }
 
-function apriModaleCarica() {
-  document.getElementById("modale-carica").classList.remove("nascosto");
-}
+function apriModaleCarica() { document.getElementById("modale-carica").classList.remove("nascosto"); }
 
 function chiudiModale() {
   document.getElementById("modale-carica").classList.add("nascosto");
@@ -229,9 +217,7 @@ document.addEventListener("change", (e) => {
         popolaSelectCategorie();
         document.getElementById("upload-categoria").value = nome.trim();
       });
-    } else {
-      e.target.value = "";
-    }
+    } else { e.target.value = ""; }
   }
 });
 
@@ -239,7 +225,6 @@ async function gestisciCaricaDocumento(e) {
   e.preventDefault();
   const files = document.getElementById("upload-file").files;
   if (!files || files.length === 0) return;
-
   const meta = {
     titolo: document.getElementById("upload-titolo").value.trim(),
     categoria: document.getElementById("upload-categoria").value,
@@ -250,15 +235,12 @@ async function gestisciCaricaDocumento(e) {
     tag: document.getElementById("upload-tag").value.split(",").map((t) => t.trim()).filter(Boolean),
     visibilita: "famiglia",
   };
-
   if (!meta.categoria || meta.categoria === "__nuova__") { alert("Seleziona una categoria valida."); return; }
-
   const progressoEl = document.getElementById("upload-progresso");
   const fillEl = document.getElementById("upload-progresso-fill");
   const btnSubmit = document.getElementById("btn-upload-submit");
   progressoEl.classList.remove("nascosto");
   btnSubmit.disabled = true;
-
   try {
     await caricaDocumento(files, meta, (pct) => { fillEl.style.width = `${pct}%`; });
     chiudiModale();
@@ -266,15 +248,12 @@ async function gestisciCaricaDocumento(e) {
   } catch (err) {
     console.error(err);
     alert("Errore durante il caricamento: " + err.message);
-  } finally {
-    btnSubmit.disabled = false;
-  }
+  } finally { btnSubmit.disabled = false; }
 }
 
 async function apriDettaglioDocumento(docId, documentiCache) {
   const doc = documentiCache.find((d) => d.id === docId);
   if (!doc) return;
-
   const dataStr = doc.dataDocumento ? new Date(doc.dataDocumento.seconds * 1000).toLocaleDateString("it-IT") : "—";
   const dataScadStr = doc.dataScadenza ? new Date(doc.dataScadenza.seconds * 1000).toLocaleDateString("it-IT") : null;
   const stato = statoScadenza(doc);
@@ -284,7 +263,6 @@ async function apriDettaglioDocumento(docId, documentiCache) {
     const icona = stato === "scaduto" ? "🔴" : stato === "in_scadenza" ? "🟡" : "📅";
     scadenzaHtml = `<p style="font-size:0.85rem; color:${colore}; margin-bottom:8px;">${icona} Scadenza: ${dataScadStr}</p>`;
   }
-
   const puoModificare = puoScrivere();
   const allegati = ottieniAllegati(doc);
   const allegatiHtml = allegati.map((a, idx) => `
@@ -296,7 +274,6 @@ async function apriDettaglioDocumento(docId, documentiCache) {
       ${puoModificare ? `<button class="btn btn-pericolo" style="padding:8px 12px; flex-shrink:0;" data-elimina-allegato-idx="${idx}">🗑️</button>` : ""}
     </div>
   `).join("");
-
   const html = `
     <div class="overlay" id="overlay-dettaglio">
       <div class="modale">
@@ -318,7 +295,6 @@ async function apriDettaglioDocumento(docId, documentiCache) {
     </div>
   `;
   document.body.insertAdjacentHTML("beforeend", html);
-
   document.querySelectorAll("#lista-allegati-dettaglio [data-allegato-idx]").forEach((el) => {
     el.addEventListener("click", async () => {
       const idx = parseInt(el.dataset.allegatoIdx, 10);
@@ -336,7 +312,6 @@ async function apriDettaglioDocumento(docId, documentiCache) {
       }
     });
   });
-
   document.querySelectorAll("#lista-allegati-dettaglio [data-elimina-allegato-idx]").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
@@ -347,40 +322,24 @@ async function apriDettaglioDocumento(docId, documentiCache) {
         const allegatiAggiornati = await eliminaAllegato(doc.id, doc, idx);
         document.getElementById("overlay-dettaglio").remove();
         await renderListaDocumenti();
-        if (allegatiAggiornati !== null) {
-          doc.allegati = allegatiAggiornati;
-          delete doc.storageRef;
-          apriDettaglioDocumento(doc.id, [doc]);
-        }
+        if (allegatiAggiornati !== null) { doc.allegati = allegatiAggiornati; delete doc.storageRef; apriDettaglioDocumento(doc.id, [doc]); }
       } catch (err) { alert("Errore: " + err.message); }
     });
   });
-
-  document.getElementById("btn-chiudi-dettaglio").addEventListener("click", () => {
-    document.getElementById("overlay-dettaglio").remove();
-  });
-
+  document.getElementById("btn-chiudi-dettaglio").addEventListener("click", () => document.getElementById("overlay-dettaglio").remove());
   const btnElimina = document.getElementById("btn-elimina-doc");
   if (btnElimina) {
     btnElimina.addEventListener("click", async () => {
       const conferma = allegati.length > 1 ? `Eliminare "${doc.titolo}" e tutti i suoi ${allegati.length} allegati?` : `Eliminare definitivamente "${doc.titolo}"?`;
       if (!confirm(conferma)) return;
-      try {
-        await eliminaDocumento(doc.id, doc);
-        document.getElementById("overlay-dettaglio").remove();
-        await renderListaDocumenti();
-      } catch (err) { alert("Errore: " + err.message); }
+      try { await eliminaDocumento(doc.id, doc); document.getElementById("overlay-dettaglio").remove(); await renderListaDocumenti(); }
+      catch (err) { alert("Errore: " + err.message); }
     });
   }
-
   const btnModifica = document.getElementById("btn-modifica-doc");
   if (btnModifica) {
-    btnModifica.addEventListener("click", () => {
-      document.getElementById("overlay-dettaglio").remove();
-      apriModaleModifica(doc);
-    });
+    btnModifica.addEventListener("click", () => { document.getElementById("overlay-dettaglio").remove(); apriModaleModifica(doc); });
   }
-
   const btnAggiungiAllegato = document.getElementById("btn-aggiungi-allegato");
   if (btnAggiungiAllegato) {
     const inputFile = document.getElementById("input-nuovo-allegato");
@@ -395,8 +354,7 @@ async function apriDettaglioDocumento(docId, documentiCache) {
       progressoEl.classList.remove("nascosto");
       try {
         const allegatiAggiornati = await aggiungiAllegati(doc.id, doc, nuoviFile, (pct) => { fillEl.style.width = `${pct}%`; });
-        doc.allegati = allegatiAggiornati;
-        delete doc.storageRef;
+        doc.allegati = allegatiAggiornati; delete doc.storageRef;
         document.getElementById("overlay-dettaglio").remove();
         await renderListaDocumenti();
         apriDettaglioDocumento(doc.id, [doc]);
@@ -416,7 +374,6 @@ function apriModaleModifica(doc) {
   const giorniPreavviso = doc.giorniPreavviso || 30;
   const opzioniCategorie = categorieCache.map((c) => `<option value="${escapeHtml(c.nome)}" ${c.nome === doc.categoria ? "selected" : ""}>${escapeHtml(c.nome)}</option>`).join("");
   const opzioniPreavviso = [7, 15, 30, 60, 90].map((g) => `<option value="${g}" ${g === giorniPreavviso ? "selected" : ""}>${g} giorni prima</option>`).join("");
-
   const html = `
     <div class="overlay" id="overlay-modifica">
       <div class="modale">
@@ -452,39 +409,149 @@ function apriModaleModifica(doc) {
       tag: document.getElementById("modifica-tag").value.split(",").map((t) => t.trim()).filter(Boolean),
     };
     const btnSalva = document.getElementById("btn-salva-modifica");
-    btnSalva.disabled = true;
-    btnSalva.textContent = "Salvataggio...";
-    try {
-      await aggiornaDocumento(doc.id, modifiche);
-      document.getElementById("overlay-modifica").remove();
-      await renderListaDocumenti();
-    } catch (err) {
-      alert("Errore: " + err.message);
-      btnSalva.disabled = false;
-      btnSalva.textContent = "Salva";
-    }
+    btnSalva.disabled = true; btnSalva.textContent = "Salvataggio...";
+    try { await aggiornaDocumento(doc.id, modifiche); document.getElementById("overlay-modifica").remove(); await renderListaDocumenti(); }
+    catch (err) { alert("Errore: " + err.message); btnSalva.disabled = false; btnSalva.textContent = "Salva"; }
   });
 }
+
+// ---- Agenda ----
+
+async function renderListaAppuntamenti() {
+  const container = document.getElementById("lista-appuntamenti");
+  container.innerHTML = '<div class="stato-vuoto">Caricamento...</div>';
+  try {
+    const snap = await db.collection(COLLECTION_APPUNTAMENTI).orderBy("dataOra", "asc").get();
+    appuntamentiCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (appuntamentiCache.length === 0) {
+      container.innerHTML = '<div class="stato-vuoto">Nessun appuntamento. Usa il + per aggiungerne uno.</div>';
+      return;
+    }
+    const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+    const futuri = appuntamentiCache.filter((a) => { const d = new Date(a.dataOra.seconds * 1000); d.setHours(0,0,0,0); return d >= oggi; });
+    const passati = appuntamentiCache.filter((a) => { const d = new Date(a.dataOra.seconds * 1000); d.setHours(0,0,0,0); return d < oggi; });
+    let html = "";
+    if (futuri.length > 0) { html += '<div class="sezione-titolo">Prossimi appuntamenti</div>'; html += futuri.map(renderCardAppuntamento).join(""); }
+    if (passati.length > 0) { html += '<div class="sezione-titolo" style="margin-top:28px;">Passati</div>'; html += passati.slice().reverse().map(renderCardAppuntamento).join(""); }
+    container.innerHTML = html;
+    container.querySelectorAll(".card-appuntamento").forEach((card) => {
+      card.addEventListener("click", () => apriDettaglioAppuntamento(card.dataset.id));
+    });
+  } catch (err) {
+    console.error(err);
+    container.innerHTML = `<div class="stato-vuoto">Errore: ${err.message || String(err)}</div>`;
+  }
+}
+
+function renderCardAppuntamento(app) {
+  const data = new Date(app.dataOra.seconds * 1000);
+  const oggi = new Date(); oggi.setHours(0,0,0,0);
+  const dataApp = new Date(data); dataApp.setHours(0,0,0,0);
+  const isOggi = dataApp.getTime() === oggi.getTime();
+  const isPassato = dataApp < oggi;
+  const badgeOggi = isOggi ? '<span class="tag-pill" style="background:#fff3e0; border-color:#ff9800; color:#e65100;">Oggi</span>' : "";
+  return `
+    <div class="card-appuntamento ${isOggi ? "oggi" : isPassato ? "passato" : ""}" data-id="${app.id}">
+      <div class="data-badge">
+        <div class="giorno">${data.getDate()}</div>
+        <div class="mese">${data.toLocaleDateString("it-IT", { month: "short" })} ${data.getFullYear()}</div>
+      </div>
+      <div class="info" style="flex:1; min-width:0;">
+        <div class="titolo">${escapeHtml(app.titolo)}</div>
+        <div class="dettagli">${app.ora ? `🕐 ${app.ora}` : "Orario non specificato"}${app.descrizione ? ` · ${escapeHtml(app.descrizione.substring(0,50))}${app.descrizione.length > 50 ? "..." : ""}` : ""}</div>
+        <div style="margin-top:4px">${badgeOggi}</div>
+      </div>
+    </div>
+  `;
+}
+
+function apriDettaglioAppuntamento(appId) {
+  const app = appuntamentiCache.find((a) => a.id === appId);
+  if (!app) return;
+  const data = new Date(app.dataOra.seconds * 1000);
+  const dataStr = data.toLocaleDateString("it-IT", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const html = `
+    <div class="overlay" id="overlay-dettaglio-app">
+      <div class="modale">
+        <h2>${escapeHtml(app.titolo)}</h2>
+        <p style="color:var(--colore-testo-secondario); margin-bottom:8px;">📅 ${dataStr}${app.ora ? ` · 🕐 ${app.ora}` : ""}</p>
+        ${app.descrizione ? `<p style="font-size:0.9rem; margin-bottom:16px;">${escapeHtml(app.descrizione)}</p>` : ""}
+        ${puoScrivere() ? '<button class="btn btn-secondario btn-blocco" id="btn-modifica-app" style="margin-bottom:10px">Modifica</button>' : ""}
+        ${puoScrivere() ? '<button class="btn btn-pericolo btn-blocco" id="btn-elimina-app" style="margin-bottom:10px">Elimina</button>' : ""}
+        <button class="btn btn-secondario btn-blocco" id="btn-chiudi-dettaglio-app">Chiudi</button>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML("beforeend", html);
+  document.getElementById("btn-chiudi-dettaglio-app").addEventListener("click", () => document.getElementById("overlay-dettaglio-app").remove());
+  const btnModifica = document.getElementById("btn-modifica-app");
+  if (btnModifica) { btnModifica.addEventListener("click", () => { document.getElementById("overlay-dettaglio-app").remove(); apriModaleModificaAppuntamento(app); }); }
+  const btnElimina = document.getElementById("btn-elimina-app");
+  if (btnElimina) {
+    btnElimina.addEventListener("click", async () => {
+      if (!confirm(`Eliminare l'appuntamento "${app.titolo}"?`)) return;
+      try { await db.collection(COLLECTION_APPUNTAMENTI).doc(app.id).delete(); document.getElementById("overlay-dettaglio-app").remove(); await renderListaAppuntamenti(); }
+      catch (err) { alert("Errore: " + err.message); }
+    });
+  }
+}
+
+function apriModaleNuovoAppuntamento() {
+  appuntamentoInModifica = null;
+  document.getElementById("modale-titolo-appuntamento").textContent = "Nuovo appuntamento";
+  document.getElementById("form-appuntamento").reset();
+  document.getElementById("app-data").value = new Date().toISOString().split("T")[0];
+  document.getElementById("modale-appuntamento").classList.remove("nascosto");
+}
+
+function apriModaleModificaAppuntamento(app) {
+  appuntamentoInModifica = app;
+  document.getElementById("modale-titolo-appuntamento").textContent = "Modifica appuntamento";
+  const data = new Date(app.dataOra.seconds * 1000);
+  document.getElementById("app-titolo").value = app.titolo || "";
+  document.getElementById("app-data").value = data.toISOString().split("T")[0];
+  document.getElementById("app-ora").value = app.ora || "";
+  document.getElementById("app-descrizione").value = app.descrizione || "";
+  document.getElementById("modale-appuntamento").classList.remove("nascosto");
+}
+
+function chiudiModaleAppuntamento() {
+  document.getElementById("modale-appuntamento").classList.add("nascosto");
+  document.getElementById("form-appuntamento").reset();
+  appuntamentoInModifica = null;
+}
+
+async function gestisciSalvaAppuntamento(e) {
+  e.preventDefault();
+  const titolo = document.getElementById("app-titolo").value.trim();
+  const dataVal = document.getElementById("app-data").value;
+  const ora = document.getElementById("app-ora").value;
+  const descrizione = document.getElementById("app-descrizione").value.trim();
+  const btn = document.getElementById("btn-salva-app");
+  btn.disabled = true; btn.textContent = "Salvataggio...";
+  try {
+    const dati = { titolo, dataOra: firebase.firestore.Timestamp.fromDate(new Date(dataVal)), ora: ora || null, descrizione: descrizione || null, caricatoDa: currentUser.uid };
+    if (appuntamentoInModifica) { await db.collection(COLLECTION_APPUNTAMENTI).doc(appuntamentoInModifica.id).update(dati); }
+    else { await db.collection(COLLECTION_APPUNTAMENTI).add(dati); }
+    chiudiModaleAppuntamento();
+    await renderListaAppuntamenti();
+  } catch (err) {
+    console.error(err);
+    alert("Errore durante il salvataggio: " + err.message);
+  } finally { btn.disabled = false; btn.textContent = "Salva"; }
+}
+
+// ---- Password ----
 
 async function gestisciPasswordDimenticata() {
   const email = document.getElementById("login-email").value.trim();
   const msgEl = document.getElementById("reset-messaggio");
-  if (!email) {
-    msgEl.style.display = "block";
-    msgEl.style.color = "var(--colore-errore)";
-    msgEl.textContent = "Inserisci la tua email nel campo qui sopra, poi clicca di nuovo.";
-    return;
-  }
+  if (!email) { msgEl.style.display = "block"; msgEl.style.color = "var(--colore-errore)"; msgEl.textContent = "Inserisci la tua email nel campo qui sopra, poi clicca di nuovo."; return; }
   try {
     await inviaResetPassword(email);
-    msgEl.style.display = "block";
-    msgEl.style.color = "var(--colore-successo)";
+    msgEl.style.display = "block"; msgEl.style.color = "var(--colore-successo)";
     msgEl.textContent = "✓ Email di reset inviata. Controlla la casella (anche spam).";
-  } catch (err) {
-    msgEl.style.display = "block";
-    msgEl.style.color = "var(--colore-errore)";
-    msgEl.textContent = err;
-  }
+  } catch (err) { msgEl.style.display = "block"; msgEl.style.color = "var(--colore-errore)"; msgEl.textContent = err; }
 }
 
 function apriModaleCambiaPassword() {
@@ -513,13 +580,12 @@ function apriModaleCambiaPassword() {
     const erroreEl = document.getElementById("cambia-password-errore");
     erroreEl.textContent = "";
     if (nuova !== conferma) { erroreEl.textContent = "Le due password non coincidono."; return; }
-    try {
-      await cambiaPassword(nuova);
-      document.getElementById("overlay-cambia-password").remove();
-      alert("✓ Password cambiata con successo.");
-    } catch (err) { erroreEl.textContent = err; }
+    try { await cambiaPassword(nuova); document.getElementById("overlay-cambia-password").remove(); alert("✓ Password cambiata con successo."); }
+    catch (err) { erroreEl.textContent = err; }
   });
 }
+
+// ---- Utility ----
 
 function escapeHtml(str) {
   if (!str) return "";
@@ -528,14 +594,9 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-function iniziale(categoria) {
-  return (categoria || "?").charAt(0).toUpperCase();
-}
+function iniziale(categoria) { return (categoria || "?").charAt(0).toUpperCase(); }
 
 function debounce(fn, delay) {
   let timer;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delay);
-  };
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), delay); };
 }
