@@ -1,0 +1,26 @@
+name: Migrazione file Fiscale
+
+on:
+  workflow_dispatch:
+
+jobs:
+  migra:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Installa dipendenze
+        working-directory: scripts
+        run: npm install
+
+      - name: Esegui migrazione
+        working-directory: scripts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node migra-fiscale.js
