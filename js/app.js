@@ -84,6 +84,10 @@ async function inizializzaApp() {
   document.getElementById("nome-utente").textContent = currentUserData?.nome || currentUser.email;
   document.getElementById("fab-carica").classList.toggle("nascosto", !puoScrivere());
   document.getElementById("fab-aggiungi").classList.toggle("nascosto", !puoScrivere());
+  // Nascondi il tab Agenda agli utenti esterni
+  if (isEsterno()) {
+    document.querySelector('.tab-btn[data-tab="agenda"]').classList.add("nascosto");
+  }
   categorieCache = await caricaCategorie();
   popolaSelectCategorie();
   await renderListaDocumenti();
