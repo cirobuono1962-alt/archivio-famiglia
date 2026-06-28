@@ -26,6 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("select-categoria-filtro").addEventListener("change", applicaFiltri);
   document.getElementById("select-anno-filtro").addEventListener("change", applicaFiltri);
   document.getElementById("fab-aggiungi").addEventListener("click", apriModaleNuovoAppuntamento);
+  document.getElementById("btn-esporta-excel").addEventListener("click", esportaExcel);
   document.getElementById("btn-chiudi-modale-app").addEventListener("click", chiudiModaleAppuntamento);
   document.getElementById("form-appuntamento").addEventListener("submit", gestisciSalvaAppuntamento);
 
@@ -42,6 +43,7 @@ function cambiaTab(nomeTab) {
   document.querySelector(`.tab-btn[data-tab="${nomeTab}"]`).classList.add("attivo");
   document.getElementById(`tab-${nomeTab}`).classList.add("attivo");
   if (nomeTab === "agenda") renderListaAppuntamenti();
+  if (nomeTab === "scadenze") renderListaScadenze();
 }
 
 // ---- Auth ----
@@ -417,6 +419,100 @@ function apriModaleModifica(doc) {
     try { await aggiornaDocumento(doc.id, modifiche); document.getElementById("overlay-modifica").remove(); await renderListaDocumenti(); }
     catch (err) { alert("Errore: " + err.message); btnSalva.disabled = false; btnSalva.textContent = "Salva"; }
   });
+}
+
+// ---- Scadenze ----
+
+async function renderListaScadenze() {
+  const container = document.getElementById("lista-scadenze");
+  container.innerHTML = '<div class="stato-vuoto">Caricamento...</div>';
+  try {
+    const tutti = await cercaDocumenti({});
+    const conScadenza = tutti
+      .filter((d) => d.dataScadenza)
+      .sort((a, b) => a.dataScadenza.seconds - b.dataScadenza.seconds);
+
+    if (conScadenza.length === 0) {
+      container.innerHTML = '<div class="stato-vuoto">Nessun documento con scadenza impostata.</div>';
+      return;
+    }
+
+    container.innerHTML = conScadenza.map((doc) => {
+      const stato = statoScadenza(doc);
+      const dataScad = new Date(doc.dataScadenza.seconds * 1000).toLocaleDateString("it-IT");
+      const oggi = new Date(); oggi.setHours(0,0,0,0);
+      const scad = new Date(doc.dataScadenza.seconds * 1000); scad.setHours(0,0,0,0);
+      const giorni = Math.round((scad - oggi) / (1000 * 60 * 60 * 24));
+
+      let coloreStato = "var(--colore-testo-secondario)";
+      let etichetta = giorni > 0 ? `tra ${giorni} giorn${giorni === 1 ? "o" : "i"}` : giorni === 0 ? "oggi" : `scaduto ${Math.abs(giorni)} giorni fa`;
+      if (stato === "scaduto") coloreStato = "#c62828";
+      else if (stato === "in_scadenza") coloreStato = "#e65100";
+
+      return `
+        <div class="card-documento" style="cursor:default;">
+          <div class="icona-categoria">${iniziale(doc.categoria)}</div>
+          <div class="info" style="flex:1;">
+            <div class="titolo">${escapeHtml(doc.titolo)}</div>
+            <div class="dettagli">${escapeHtml(doc.categoria)} · ${escapeHtml(doc.intestatario || "—")}</div>
+            <div style="margin-top:4px; font-size:0.85rem; color:${coloreStato}; font-weight:600;">
+              📅 ${dataScad} — ${etichetta}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (err) {
+    console.error(err);
+    container.innerHTML = '<div class="stato-vuoto">Errore nel caricamento.</div>';
+  }
+}
+
+async function esportaExcel() {
+  try {
+    const tutti = await cercaDocumenti({});
+    const conScadenza = tutti
+      .filter((d) => d.dataScadenza)
+      .sort((a, b) => a.dataScadenza.seconds - b.dataScadenza.seconds);
+
+    if (conScadenza.length === 0) {
+      alert("Nessun documento con scadenza impostata.");
+      return;
+    }
+
+    const oggi = new Date(); oggi.setHours(0,0,0,0);
+
+    // Costruisco CSV (compatibile con Excel)
+    const righe = [
+      ["Titolo", "Categoria", "Intestatario", "Data scadenza", "Giorni rimanenti", "Stato"],
+      ...conScadenza.map((doc) => {
+        const scad = new Date(doc.dataScadenza.seconds * 1000); scad.setHours(0,0,0,0);
+        const giorni = Math.round((scad - oggi) / (1000 * 60 * 60 * 24));
+        const stato = statoScadenza(doc);
+        const statoTesto = stato === "scaduto" ? "Scaduto" : stato === "in_scadenza" ? "In scadenza" : "OK";
+        return [
+          doc.titolo || "",
+          doc.categoria || "",
+          doc.intestatario || "",
+          scad.toLocaleDateString("it-IT"),
+          giorni,
+          statoTesto,
+        ];
+      }),
+    ];
+
+    const csv = "﻿" + righe.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `scadenze_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error(err);
+    alert("Errore durante l'esportazione: " + err.message);
+  }
 }
 
 // ---- Agenda ----
