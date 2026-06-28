@@ -102,6 +102,7 @@
     <div class="tab-bar">
       <button class="tab-btn attivo" data-tab="archivio">📁 Archivio</button>
       <button class="tab-btn" data-tab="agenda">📅 Agenda</button>
+      <button class="tab-btn" data-tab="scadenze">⏰ Scadenze</button>
     </div>
 
     <div id="tab-archivio" class="tab-content attivo">
@@ -117,6 +118,18 @@
         </div>
       </div>
       <button id="fab-carica" class="fab nascosto" title="Carica documento">+</button>
+    </div>
+
+    <div id="tab-scadenze" class="tab-content">
+      <div class="container">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
+          <span style="font-size:0.9rem; color:var(--colore-testo-secondario);">Documenti con scadenza, ordinati per data</span>
+          <button id="btn-esporta-excel" class="btn btn-secondario" style="padding:8px 14px; font-size:0.85rem;">📥 Scarica Excel</button>
+        </div>
+        <div id="lista-scadenze" class="lista-documenti">
+          <div class="stato-vuoto">Caricamento...</div>
+        </div>
+      </div>
     </div>
 
     <div id="tab-agenda" class="tab-content">
