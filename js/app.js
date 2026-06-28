@@ -517,13 +517,108 @@ async function esportaExcel() {
 }
 
 async function stampaScadenze() {
-  // Assicuriamoci che la lista scadenze sia caricata
-  await renderListaScadenze();
-  // Titolo temporaneo per la stampa
-  const titoloOriginale = document.title;
-  document.title = `Scadenze documenti — ${new Date().toLocaleDateString("it-IT")}`;
-  window.print();
-  document.title = titoloOriginale;
+  try {
+    const tutti = await cercaDocumenti({});
+    const conScadenza = tutti
+      .filter((d) => d.dataScadenza)
+      .sort((a, b) => a.dataScadenza.seconds - b.dataScadenza.seconds);
+
+    if (conScadenza.length === 0) {
+      alert("Nessun documento con scadenza impostata.");
+      return;
+    }
+
+    const btn = document.getElementById("btn-stampa-scadenze");
+    btn.disabled = true;
+    btn.textContent = "Generazione...";
+
+    // Carica jsPDF e autoTable dinamicamente
+    await Promise.all([
+      caricaScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"),
+      caricaScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"),
+    ]);
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+    // Intestazione
+    doc.setFillColor(44, 95, 111); // colore primario
+    doc.rect(0, 0, 210, 20, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("Archivio Famiglia — Scadenzario", 14, 13);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Generato il ${new Date().toLocaleDateString("it-IT")}`, 196, 13, { align: "right" });
+
+    // Tabella
+    const oggi = new Date(); oggi.setHours(0,0,0,0);
+
+    const righe = conScadenza.map((d) => {
+      const scad = new Date(d.dataScadenza.seconds * 1000); scad.setHours(0,0,0,0);
+      const giorni = Math.round((scad - oggi) / (1000 * 60 * 60 * 24));
+      const stato = statoScadenza(d);
+      const statoTesto = stato === "scaduto" ? "Scaduto" : stato === "in_scadenza" ? "In scadenza" : "OK";
+      const giorniTesto = giorni < 0 ? `${Math.abs(giorni)}gg fa` : giorni === 0 ? "Oggi" : `${giorni}gg`;
+      return [d.titolo || "", d.categoria || "", d.intestatario || "", scad.toLocaleDateString("it-IT"), giorniTesto, statoTesto];
+    });
+
+    doc.autoTable({
+      startY: 26,
+      head: [["Titolo", "Categoria", "Intestatario", "Scadenza", "Giorni", "Stato"]],
+      body: righe,
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [44, 95, 111], textColor: 255, fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [245, 248, 250] },
+      columnStyles: {
+        0: { cellWidth: 50 },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 35 },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 18 },
+        5: { cellWidth: 22 },
+      },
+      didDrawCell: (data) => {
+        if (data.section === "body" && data.column.index === 5) {
+          const val = data.cell.raw;
+          if (val === "Scaduto") data.cell.styles.textColor = [198, 40, 40];
+          else if (val === "In scadenza") data.cell.styles.textColor = [230, 81, 0];
+          else data.cell.styles.textColor = [46, 125, 50];
+        }
+      },
+    });
+
+    // Footer
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text(`Pagina ${i} di ${pageCount}`, 196, 290, { align: "right" });
+    }
+
+    doc.save(`scadenze_${new Date().toISOString().split("T")[0]}.pdf`);
+
+    btn.disabled = false;
+    btn.textContent = "🖨️ Stampa / PDF";
+  } catch (err) {
+    console.error(err);
+    alert("Errore durante la generazione del PDF: " + err.message);
+    document.getElementById("btn-stampa-scadenze").disabled = false;
+    document.getElementById("btn-stampa-scadenze").textContent = "🖨️ Stampa / PDF";
+  }
+}
+
+function caricaScript(url) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${url}"]`)) { resolve(); return; }
+    const s = document.createElement("script");
+    s.src = url;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
 }
 
 // ---- Agenda ----
