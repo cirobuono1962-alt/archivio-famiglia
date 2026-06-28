@@ -27,6 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("select-anno-filtro").addEventListener("change", applicaFiltri);
   document.getElementById("fab-aggiungi").addEventListener("click", apriModaleNuovoAppuntamento);
   document.getElementById("btn-esporta-excel").addEventListener("click", esportaExcel);
+  document.getElementById("btn-stampa-scadenze").addEventListener("click", stampaScadenze);
   document.getElementById("btn-chiudi-modale-app").addEventListener("click", chiudiModaleAppuntamento);
   document.getElementById("form-appuntamento").addEventListener("submit", gestisciSalvaAppuntamento);
 
@@ -513,6 +514,16 @@ async function esportaExcel() {
     console.error(err);
     alert("Errore durante l'esportazione: " + err.message);
   }
+}
+
+async function stampaScadenze() {
+  // Assicuriamoci che la lista scadenze sia caricata
+  await renderListaScadenze();
+  // Titolo temporaneo per la stampa
+  const titoloOriginale = document.title;
+  document.title = `Scadenze documenti — ${new Date().toLocaleDateString("it-IT")}`;
+  window.print();
+  document.title = titoloOriginale;
 }
 
 // ---- Agenda ----
