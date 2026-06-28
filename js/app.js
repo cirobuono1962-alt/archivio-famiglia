@@ -571,13 +571,14 @@ async function stampaScadenze() {
       styles: { fontSize: 9, cellPadding: 3 },
       headStyles: { fillColor: [44, 95, 111], textColor: 255, fontStyle: "bold" },
       alternateRowStyles: { fillColor: [245, 248, 250] },
+      margin: { left: 8, right: 8 },
       columnStyles: {
-        0: { cellWidth: 50 },
+        0: { cellWidth: 55 },
         1: { cellWidth: 35 },
         2: { cellWidth: 35 },
         3: { cellWidth: 25 },
         4: { cellWidth: 18 },
-        5: { cellWidth: 22 },
+        5: { cellWidth: 28 },
       },
       didDrawCell: (data) => {
         if (data.section === "body" && data.column.index === 5) {
