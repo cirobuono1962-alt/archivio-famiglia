@@ -65,6 +65,15 @@
       letter-spacing: 0.05em;
       margin: 20px 0 8px;
     }
+  
+    @media print {
+      .app-header, .tab-bar, .toolbar, #btn-esporta-excel, #btn-stampa-scadenze, .fab, .modale, .overlay { display: none !important; }
+      #tab-archivio, #tab-agenda { display: none !important; }
+      #tab-scadenze { display: block !important; }
+      .card-documento { box-shadow: none !important; border: 1px solid #ddd; margin-bottom: 8px; break-inside: avoid; }
+      body { background: white !important; }
+      .container { padding: 0 !important; }
+    }
   </style>
 </head>
 <body>
@@ -125,6 +134,7 @@
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
           <span style="font-size:0.9rem; color:var(--colore-testo-secondario);">Documenti con scadenza, ordinati per data</span>
           <button id="btn-esporta-excel" class="btn btn-secondario" style="padding:8px 14px; font-size:0.85rem;">📥 Scarica Excel</button>
+          <button id="btn-stampa-scadenze" class="btn btn-secondario" style="padding:8px 14px; font-size:0.85rem;">🖨️ Stampa / PDF</button>
         </div>
         <div id="lista-scadenze" class="lista-documenti">
           <div class="stato-vuoto">Caricamento...</div>
