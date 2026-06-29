@@ -532,11 +532,9 @@ async function stampaScadenze() {
     btn.disabled = true;
     btn.textContent = "Generazione...";
 
-    // Carica jsPDF e autoTable dinamicamente
-    await Promise.all([
-      caricaScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"),
-      caricaScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"),
-    ]);
+    // Carica jsPDF e autoTable in sequenza (autoTable dipende da jsPDF)
+    await caricaScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+    await caricaScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -611,13 +609,23 @@ async function stampaScadenze() {
   }
 }
 
-function caricaScript(url) {
+function caricaScript(url, tentativo = 1) {
   return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${url}"]`)) { resolve(); return; }
+    // Se già caricato, risolvi subito
+    const esistente = document.querySelector(`script[src="${url}"]`);
+    if (esistente) { resolve(); return; }
     const s = document.createElement("script");
     s.src = url;
     s.onload = resolve;
-    s.onerror = reject;
+    s.onerror = () => {
+      s.remove();
+      if (tentativo < 3) {
+        console.warn(`Retry caricamento script (tentativo ${tentativo + 1}): ${url}`);
+        setTimeout(() => caricaScript(url, tentativo + 1).then(resolve).catch(reject), 1000);
+      } else {
+        reject(new Error(`Impossibile caricare: ${url}`));
+      }
+    };
     document.head.appendChild(s);
   });
 }
